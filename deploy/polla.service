@@ -5,10 +5,10 @@ After=network.target mysql.service
 [Service]
 Type=simple
 # Adjust user and paths to your server:
-User=polla
-WorkingDirectory=/opt/polla
-EnvironmentFile=/opt/polla/.env
-ExecStart=/opt/polla/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+User=www-data
+WorkingDirectory=/var/www/html/polla
+EnvironmentFile=/var/www/html/polla/.env
+ExecStart=/var/www/html/polla/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
 
