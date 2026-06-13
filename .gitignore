@@ -9,7 +9,7 @@ venv/
 .DS_Store
 
 # uploads (OCR screenshots) and uploaded data
-uploads/
+#uploads/
 
 # personal sample screenshots in the repo root (contain real names)
 /*.png
