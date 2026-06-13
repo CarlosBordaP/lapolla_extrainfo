@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polla — Partido</title>
+  <link rel="stylesheet" href="/web/app.css" />
+</head>
+<body>
+  <main id="main"><div class="empty">Cargando…</div></main>
+
+<script>
+const fmtDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"full", timeStyle:"short" }) + " (Bogotá)";
+const params = new URLSearchParams(location.search);
+const id = params.get("id");
+
+function header(m) {
+  const live = m.status === "live", finished = m.status === "finished";
+  const score = (m.home_score ?? "–") + " : " + (m.away_score ?? "–");
+  const state = live ? '<span class="badge live">EN VIVO</span>'
+    : finished ? '<span class="badge finished">Final</span>'
+    : '<span class="badge scheduled">Programado</span>';
+  return `<h1>${m.home_team} <span class="muted">vs</span> ${m.away_team}</h1>
+    <div class="card ${live ? "gold" : ""}">
+      <div class="v" style="font-size:2.2rem">${(finished||live) ? score : "–"}</div>
+      <div class="s">${state} · ${m.stage === "knockout" ? "Eliminatoria" : "Fase de grupos"} · ${fmtDate(m.kickoff_utc)}</div>
+    </div>`;
+}
+
+function predictionsTable(preds, scored) {
+  if (!preds.length) return '<h2>Predicciones</h2><div class="empty">Sin predicciones cargadas.</div>';
+  const rows = preds.map(p => `
+    <tr><td class="l">${p.display_name} <span class="muted">@${p.username}</span></td>
+      <td>${p.pred_home} : ${p.pred_away}</td>
+      <td>${scored ? "<b>" + p.points + "</b>" : "—"}</td></tr>`).join("");
+  return `<h2>Predicciones${scored ? " y puntos" : ""}</h2>
+    <table><thead><tr><th class="l">Jugador</th><th>Pronóstico</th><th>Puntos</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function filesSection(files) {
+  if (!files.length) return "";
+  return `<h2>Capturas del OCR (${files.length})</h2>` +
+    files.map(f => `<img class="shot" src="${f.url}" alt="${f.original_name || "captura"}" loading="lazy">`).join("");
+}
+
+(async () => {
+  const main = document.getElementById("main");
+  if (!id) { main.innerHTML = '<div class="empty">Falta el id del partido.</div>'; return; }
+  const res = await fetch("/matches/" + encodeURIComponent(id));
+  if (!res.ok) { main.innerHTML = '<div class="empty">Partido no encontrado.</div>'; return; }
+  const d = await res.json();
+  const scored = d.match.home_score != null && d.match.away_score != null;
+  main.innerHTML =
+    `<p><a href="/calendar">← Calendario</a></p>` +
+    header(d.match) + predictionsTable(d.predictions, scored) + filesSection(d.files);
+})();
+</script>
+<script src="/web/nav.js"></script>
+<script src="/web/track.js"></script>
+</body>
+</html>

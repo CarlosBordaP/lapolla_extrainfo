@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polla — Estadísticas</title>
+  <link rel="stylesheet" href="/web/app.css" />
+  <style>
+    :root { --green:#1f7a4d; --gold:#d4af37; --bg:#0f1411; --panel:#16201a; --line:#26342b; }
+    body { font-family: system-ui, sans-serif; margin:0; background:var(--bg); color:#eef3ef; }
+    header { padding:1rem 1.25rem; border-bottom:1px solid var(--line); display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
+    h1 { font-size:1.15rem; margin:0; } h2 { font-size:.95rem; color:#9fb6a8; margin:1.5rem 0 .5rem; }
+    a { color:#7fd1a3; }
+    main { max-width:920px; margin:1rem auto; padding:0 1rem 3rem; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:.7rem; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:.75rem .85rem; }
+    .card .k { font-size:.72rem; color:#8aa394; text-transform:uppercase; letter-spacing:.04em; }
+    .card .v { font-size:1.25rem; font-weight:800; margin-top:.2rem; }
+    .card .s { font-size:.8rem; color:#b9cabf; }
+    .card.gold { border-color:var(--gold); }
+    table { border-collapse:collapse; width:100%; margin-top:.5rem; font-size:.85rem; }
+    th, td { border-bottom:1px solid var(--line); padding:.4rem .5rem; text-align:right; }
+    th:first-child, td:first-child, th.l, td.l { text-align:left; }
+    th { color:#8aa394; font-weight:600; cursor:pointer; user-select:none; }
+    tbody tr:hover { background:#1b261f; }
+    .bar { height:.5rem; border-radius:3px; background:linear-gradient(90deg,var(--green),var(--gold)); }
+    .empty { color:#8aa394; padding:2rem; text-align:center; }
+  </style>
+</head>
+<body>
+  <main id="main"><h1>📊 Estadísticas</h1><div class="empty">Cargando…</div></main>
+
+<script>
+const pct = (x) => (x*100).toFixed(0) + "%";
+
+function card(k, v, s, gold) {
+  return `<div class="card ${gold?'gold':''}"><div class="k">${k}</div>
+    <div class="v">${v}</div>${s?`<div class="s">${s}</div>`:''}</div>`;
+}
+
+function highlightCards(h) {
+  if (!h.finished_matches) return '<div class="empty">Aún no hay partidos finalizados. Las estadísticas aparecen cuando un partido termina.</div>';
+  const c = [];
+  c.push(card("Líder", h.leader.display_name, `${h.leader.value} pts`, true));
+  c.push(card("Más certero (marcador exacto)", h.sharpest.display_name, pct(h.sharpest.value)));
+  if (h.most_consistent) c.push(card("Más constante (σ baja)", h.most_consistent.display_name, `σ ${h.most_consistent.value}`));
+  c.push(card("Mejor partido", h.best_single_match.display_name, `${h.best_single_match.value} pts`));
+  if (h.toughest_match) c.push(card("Partido más difícil", h.toughest_match.label, `prom ${h.toughest_match.avg_points} · ${h.toughest_match.score}`));
+  if (h.easiest_match) c.push(card("Partido más fácil", h.easiest_match.label, `prom ${h.easiest_match.avg_points} · ${h.easiest_match.score}`));
+  c.push(card("Partidos jugados", h.finished_matches, `${h.predictions_scored} predicciones`));
+  return `<div class="cards">${c.join("")}</div>`;
+}
+
+function playersTable(players) {
+  if (!players.length) return "";
+  const maxPts = Math.max(...players.map(p => p.points), 1);
+  const rows = players.map((p,i) => `
+    <tr>
+      <td class="l">${i+1}. ${p.display_name} <span style="color:#7f9789">@${p.username}</span></td>
+      <td><b>${p.points}</b></td>
+      <td>${p.played}</td>
+      <td>${p.avg}</td>
+      <td>${pct(p.result_rate)}</td>
+      <td>${p.exact} (${pct(p.exact_rate)})</td>
+      <td>${p.best}</td>
+      <td>${p.consistency}</td>
+      <td style="width:90px"><div class="bar" style="width:${Math.round(100*p.points/maxPts)}%"></div></td>
+    </tr>`).join("");
+  return `<h2>Jugadores</h2>
+    <table><thead><tr>
+      <th class="l">Jugador</th><th>Pts</th><th>PJ</th><th>Prom</th>
+      <th>Resultado</th><th>Exactos</th><th>Mejor</th><th>σ</th><th></th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function matchesTable(matches) {
+  if (!matches.length) return "";
+  const rows = matches.map(m => `
+    <tr><td class="l">${m.label}</td><td>${m.score}</td><td>${m.stage}</td>
+      <td>${m.predictors}</td><td>${m.avg_points}</td><td>${m.exact_count}</td></tr>`).join("");
+  return `<h2>Partidos</h2>
+    <table><thead><tr>
+      <th class="l">Partido</th><th>Marcador</th><th>Fase</th>
+      <th>Predicciones</th><th>Prom pts</th><th>Exactos</th>
+    </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function fmtDuration(s) {
+  s = Math.round(s);
+  const m = Math.floor(s / 60);
+  return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+}
+function fmtWhen(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"short", timeStyle:"short" });
+}
+function engagementTable(rows) {
+  if (!rows || !rows.length) return "";
+  const tr = rows.map(r => `
+    <tr><td class="l">${r.username}</td><td>${r.visits}</td>
+      <td>${fmtDuration(r.total_seconds)}</td><td>${fmtDuration(r.avg_seconds)}</td>
+      <td>${fmtWhen(r.last_seen)}</td></tr>`).join("");
+  return `<h2>Participación (accesos)</h2>
+    <table><thead><tr>
+      <th class="l">Usuario</th><th>Visitas</th><th>Tiempo total</th>
+      <th>Prom/visita</th><th>Último acceso</th>
+    </tr></thead><tbody>${tr}</tbody></table>`;
+}
+
+(async () => {
+  const main = document.getElementById("main");
+  const TITLE = "<h1>📊 Estadísticas</h1>";
+  try {
+    const res = await fetch("/analytics");
+    if (res.status === 403) {
+      main.innerHTML = TITLE + '<div class="empty">🔒 Estadísticas solo para el administrador.</div>';
+      return;
+    }
+    const d = await res.json();
+    main.innerHTML = TITLE +
+      highlightCards(d.highlights) + playersTable(d.players) +
+      matchesTable(d.matches) + engagementTable(d.engagement);
+  } catch (e) {
+    main.innerHTML = TITLE + '<div class="empty">Error cargando estadísticas.</div>';
+  }
+})();
+</script>
+<script src="/web/nav.js"></script>
+<script src="/web/track.js"></script>
+</body>
+</html>

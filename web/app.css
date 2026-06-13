@@ -1,0 +1,82 @@
+:root {
+  --green:#1f7a4d; --gold:#d4af37; --bg:#0f1411; --panel:#16201a;
+  --line:#26342b; --text:#eef3ef; --muted:#8aa394;
+}
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; margin:0; background:var(--bg); color:var(--text); }
+a { color:#7fd1a3; text-decoration:none; }
+a:hover { text-decoration:underline; }
+.muted { color:var(--muted); }
+
+.nav { display:flex; align-items:center; gap:1rem; padding:.7rem 1.1rem;
+  background:#16201a; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.nav .brand { font-weight:800; }
+.nav nav { display:flex; gap:.25rem; flex-wrap:wrap; }
+.nav nav a { padding:.35rem .6rem; border-radius:7px; color:var(--text); }
+.nav nav a.active { background:var(--green); color:#fff; }
+.nav nav a:hover { background:#1d2a22; text-decoration:none; }
+.nav .who { margin-left:auto; font-size:.85rem; color:var(--muted);
+  background:none; border:1px solid var(--line); border-radius:8px;
+  padding:.3rem .6rem; cursor:pointer; }
+.nav .who:hover { border-color:var(--green); color:var(--text); }
+
+/* Identify modal (typeahead) */
+.id-overlay { position:fixed; inset:0; background:rgba(0,0,0,.62);
+  backdrop-filter:blur(3px); display:flex; align-items:flex-start;
+  justify-content:center; padding-top:11vh; z-index:1000; }
+.id-modal { background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  width:min(460px,92vw); padding:1.1rem 1.1rem 1.3rem; box-shadow:0 12px 44px rgba(0,0,0,.55); }
+.id-modal h2 { margin:.1rem 0 .2rem; font-size:1.15rem; }
+.id-modal .hint { font-size:.8rem; color:var(--muted); margin:0 0 .7rem; }
+.id-modal input { width:100%; font-size:1rem; padding:.6rem .7rem; }
+.id-list { margin-top:.6rem; max-height:46vh; overflow:auto; }
+.id-item { padding:.55rem .65rem; border-radius:8px; cursor:pointer;
+  display:flex; justify-content:space-between; gap:.5rem; align-items:center; }
+.id-item:hover, .id-item.active { background:var(--green); color:#fff; }
+.id-item .u { color:var(--muted); font-size:.78rem; }
+.id-item:hover .u, .id-item.active .u { color:#dff3e6; }
+.id-close { float:right; background:none; border:0; color:var(--muted);
+  font-size:1.15rem; cursor:pointer; line-height:1; }
+.id-close:hover { color:var(--text); }
+.id-empty { color:var(--muted); padding:.7rem .3rem; }
+
+main { max-width:880px; margin:1.2rem auto; padding:0 1rem 3rem; }
+h1 { font-size:1.25rem; } h2 { font-size:1rem; color:var(--muted); margin:1.4rem 0 .5rem; }
+
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:.8rem; }
+.card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:1rem; }
+.card.gold { border-color:var(--gold); }
+.card .k { font-size:.72rem; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+.card .v { font-size:1.8rem; font-weight:800; margin:.25rem 0; }
+.card .s { font-size:.85rem; color:#b9cabf; }
+.card a.cta { display:inline-block; margin-top:.5rem; }
+
+.btn { padding:.5rem .8rem; border:1px solid var(--green); background:var(--green);
+  color:#fff; border-radius:8px; cursor:pointer; font-size:.95rem; }
+.btn.secondary { background:transparent; color:#7fd1a3; }
+select, input { padding:.45rem .6rem; font-size:.95rem; border-radius:7px;
+  border:1px solid var(--line); background:#0f1712; color:var(--text); }
+
+table { border-collapse:collapse; width:100%; margin-top:.5rem; font-size:.9rem; }
+th, td { border-bottom:1px solid var(--line); padding:.45rem .55rem; text-align:right; }
+th:first-child, td:first-child, .l { text-align:left; }
+th { color:var(--muted); font-weight:600; }
+tbody tr:hover { background:#1b261f; }
+
+.badge { font-size:.72rem; padding:.12rem .45rem; border-radius:99px; border:1px solid var(--line); }
+.badge.live { color:#fff; background:#b3261e; border-color:#b3261e; }
+.badge.finished { color:var(--muted); }
+.badge.scheduled { color:#7fd1a3; }
+.dot { display:inline-block; width:.5rem; height:.5rem; border-radius:50%; background:#e23;
+  margin-right:.35rem; animation:pulse 1.2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.empty { color:var(--muted); text-align:center; padding:2rem; }
+.matchlink { display:flex; justify-content:space-between; align-items:center; gap:.6rem;
+  background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  padding:.6rem .8rem; margin-bottom:.5rem; }
+.matchlink:hover { border-color:var(--green); text-decoration:none; }
+.shot { max-width:100%; border:1px solid var(--line); border-radius:10px; margin:.4rem 0; }
+.seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; }
+.seg button { background:transparent; color:var(--muted); border:0; padding:.3rem .7rem;
+  font-size:.82rem; cursor:pointer; }
+.seg button.active { background:var(--green); color:#fff; }

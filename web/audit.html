@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polla — Auditoría</title>
+  <link rel="stylesheet" href="/web/app.css" />
+  <style>
+    .frow { display:flex; gap:.7rem; flex-wrap:wrap; align-items:center; margin:1rem 0; }
+    #status { margin:.5rem 0; font-size:.9rem; } .ok { color:#3ad17a; } .err { color:#e2557b; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>🔎 Auditoría vs Golpredictor</h1>
+    <p class="muted">Sube una captura de la tabla de Golpredictor. Comparo los puntos
+      contra nuestro sistema y te muestro solo las diferencias.</p>
+    <div class="frow">
+      <input type="file" id="file" accept="image/*" />
+      <button class="btn" id="run">Auditar</button>
+    </div>
+    <div id="status"></div>
+    <div id="result"></div>
+  </main>
+
+<script>
+const $ = id => document.getElementById(id);
+$("run").onclick = async () => {
+  const f = $("file").files[0];
+  if (!f) { $("status").textContent = "Elige una imagen."; $("status").className = "err"; return; }
+  $("status").textContent = "Leyendo la tabla con OCR y comparando…"; $("status").className = "";
+  $("result").innerHTML = "";
+  const fd = new FormData(); fd.append("file", f);
+  try {
+    const res = await fetch("/admin/audit", { method:"POST", body: fd });
+    if (res.status === 403) { $("status").innerHTML = "🔒 Solo administrador."; $("status").className = "err"; return; }
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const d = await res.json();
+    $("status").innerHTML = `Comparados <b>${d.compared}</b> usuarios (${d.audit_rows} filas leídas).`;
+    $("status").className = "ok";
+
+    let html = "";
+    if (!d.mismatches.length) {
+      html += `<div class="card gold" style="margin-top:1rem">✅ <b>Sin diferencias.</b> Todos los puntos coinciden con Golpredictor.</div>`;
+    } else {
+      html += `<h2>Diferencias (${d.mismatches.length})</h2>
+        <table><thead><tr><th class="l">Usuario</th><th>Nuestro</th><th>Golpredictor</th><th>Dif</th></tr></thead><tbody>` +
+        d.mismatches.map(m => `<tr><td class="l">${m.display_name} <span class="muted">@${m.username}</span></td>
+          <td>${m.ours}</td><td>${m.golpredictor}</td>
+          <td style="color:${m.ours>m.golpredictor?'#e2557b':'#3ad17a'}">${(m.ours-m.golpredictor>0?'+':'')+(m.ours-m.golpredictor)}</td></tr>`).join("") +
+        `</tbody></table>`;
+    }
+    if (d.not_read.length)
+      html += `<h2>No leídos por el OCR (${d.not_read.length})</h2>
+        <p class="muted">${d.not_read.map(u => `@${u.username}`).join(", ")}</p>`;
+    if (d.unknown.length)
+      html += `<h2>Usuarios del audit sin coincidencia (${d.unknown.length})</h2>
+        <p class="muted">${d.unknown.map(u => `${u.audit_username} (${u.points})`).join(", ")}</p>`;
+    $("result").innerHTML = html;
+  } catch (e) { $("status").textContent = "Error: " + e.message; $("status").className = "err"; }
+};
+</script>
+<script src="/web/nav.js"></script>
+<script src="/web/track.js"></script>
+</body>
+</html>

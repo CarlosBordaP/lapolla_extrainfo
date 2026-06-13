@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.sqlite
+*.db
+.pytest_cache/
+.DS_Store
+
+# uploads (OCR screenshots) and uploaded data
+uploads/
+
+# personal sample screenshots in the repo root (contain real names)
+/*.png
+/*.jpg
+/*.jpeg

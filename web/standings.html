@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polla — Tabla</title>
+  <link rel="stylesheet" href="/web/app.css" />
+  <style>
+    .sub { padding:.9rem 1.25rem .3rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap; }
+    .sub h1 { font-size:1.1rem; margin:0; }
+    .live-strip { display:flex; gap:.6rem; flex-wrap:wrap; flex:1; }
+    .match { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+             padding:.35rem .6rem; font-size:.85rem; white-space:nowrap; }
+    .match.live { border-color:var(--green); }
+    .updated { font-size:.75rem; color:var(--muted); }
+    main { max-width:760px; }
+    .caption { color:var(--muted); font-size:.8rem; margin:.2rem 0 .6rem; }
+    .row { display:grid; grid-template-columns:2.1rem 2.7rem 1fr auto; align-items:center;
+           gap:.5rem; background:var(--panel); border:1px solid var(--line);
+           border-radius:10px; padding:.5rem .7rem; margin-bottom:.45rem; }
+    .row.top1 { border-color:var(--gold); }
+    .row.me { border-color:var(--gold); background:#20251a; box-shadow:0 0 0 1px var(--gold) inset; }
+    .rank { font-variant-numeric:tabular-nums; color:#9fb6a8; font-weight:700; text-align:center; }
+    .move { font-variant-numeric:tabular-nums; font-weight:700; font-size:.85rem; text-align:center;
+            border-radius:6px; padding:.15rem 0; }
+    .move.up { color:#08110c; background:#3ad17a; }
+    .move.down { color:#fff; background:#d2335b; }
+    .move.same { color:var(--muted); background:#1b261f; }
+    .name { font-weight:600; }
+    .rsub { color:var(--muted); font-size:.78rem; margin-top:.1rem; }
+    .rsub .live-pts { color:#3ad17a; font-weight:700; }
+    .pts { font-variant-numeric:tabular-nums; font-size:1.15rem; font-weight:800;
+           min-width:2.6rem; text-align:right; }
+    .divider { text-align:center; color:var(--muted); margin:.1rem 0 .5rem; letter-spacing:.3em; }
+    .toggle { display:block; margin:.4rem auto 0; }
+    .empty { color:var(--muted); text-align:center; padding:2rem; }
+  </style>
+</head>
+<body>
+  <div class="sub">
+    <h1>⚽ Tabla de posiciones</h1>
+    <div class="live-strip" id="strip"></div>
+    <span class="updated" id="updated"></span>
+  </div>
+  <main>
+    <div class="caption" id="caption"></div>
+    <div id="list"><div class="empty">Cargando…</div></div>
+  </main>
+
+<script>
+const POLL_MS = 4000;
+let expanded = false;
+let meUser = null;
+
+const fmtTime = iso => new Date(iso).toLocaleTimeString("es-CO", { timeZone:"America/Bogota" });
+
+fetch("/me").then(r => r.json()).then(me => { meUser = me.identified ? me.username : null; tick(); });
+
+async function tick() {
+  let board, matches;
+  try {
+    [board, matches] = await Promise.all([
+      fetch("/live").then(r => r.json()),
+      fetch("/matches").then(r => r.json()),
+    ]);
+  } catch { return; }
+  renderStrip(matches);
+  renderBoard(board);
+  document.getElementById("updated").textContent =
+    "actualizado " + new Date().toLocaleTimeString("es-CO", { timeZone:"America/Bogota" }) + " (Bogotá)";
+}
+
+function renderStrip(matches) {
+  const strip = document.getElementById("strip");
+  const live = matches.filter(m => m.status === "live");
+  const recent = matches.filter(m => m.status === "finished").slice(-3);
+  strip.innerHTML = [...live, ...recent].map(m => {
+    const sc = (m.home_score ?? "-") + "–" + (m.away_score ?? "-");
+    const tag = m.status === "live" ? '<span class="dot"></span>' : "";
+    const read = m.status === "live" && m.score_updated_at
+      ? ` <span class="updated">leído ${fmtTime(m.score_updated_at)}</span>` : "";
+    return `<div class="match ${m.status}">${tag}${m.home_team} <b>${sc}</b> ${m.away_team}${read}</div>`;
+  }).join("") || '<span class="updated">Sin partidos en vivo</span>';
+}
+
+function moveBadge(delta) {
+  if (delta > 0) return `<div class="move up" title="Subió ${delta}">▲${delta}</div>`;
+  if (delta < 0) return `<div class="move down" title="Bajó ${-delta}">▼${-delta}</div>`;
+  return `<div class="move same" title="Se mantiene">=</div>`;
+}
+
+function subline(r, hasRef) {
+  if (hasRef && r.pred_home != null) {
+    const lp = r.live_points > 0 ? ` · <span class="live-pts">+${r.live_points}</span>` : ` · +0`;
+    return `Pronóstico ${r.pred_home}-${r.pred_away}${lp}`;
+  }
+  return `@${r.username}`;
+}
+
+function rowHtml(r, i, hasRef) {
+  const cls = (r.username === meUser ? "me" : (i === 0 ? "top1" : ""));
+  return `<div class="row ${cls}">
+    <div class="rank">${r.rank}</div>
+    ${moveBadge(r.delta)}
+    <div><div class="name">${r.display_name}${r.username === meUser ? " 👈" : ""}</div>
+         <div class="rsub">${subline(r, hasRef)}</div></div>
+    <div class="pts">${r.points}</div>
+  </div>`;
+}
+
+function renderBoard(data) {
+  const rows = data.rows || [];
+  const hasRef = !!data.match;
+  const list = document.getElementById("list");
+  const cap = document.getElementById("caption");
+  cap.textContent = data.match
+    ? `Movimiento según el último partido: ${data.match.home_team} ${data.match.home_score}-${data.match.away_score} ${data.match.away_team}` +
+      (data.match.status === "live" ? " (EN VIVO)" : "")
+    : "";
+
+  if (!rows.length) { list.innerHTML = '<div class="empty">Aún no hay puntajes.</div>'; return; }
+
+  let html = "";
+  if (expanded) {
+    html = rows.map((r, i) => rowHtml(r, i, hasRef)).join("");
+    html += `<button class="btn secondary toggle" id="toggle">Ver solo el top 10</button>`;
+  } else {
+    html = rows.slice(0, 10).map((r, i) => rowHtml(r, i, hasRef)).join("");
+    const meRow = meUser && rows.find(r => r.username === meUser);
+    if (meRow && meRow.rank > 10) {
+      html += `<div class="divider">· · ·</div>` + rowHtml(meRow, -1, hasRef);
+    }
+    if (rows.length > 10)
+      html += `<button class="btn secondary toggle" id="toggle">Ver tabla completa (${rows.length})</button>`;
+  }
+  list.innerHTML = html;
+  const t = document.getElementById("toggle");
+  if (t) t.onclick = () => { expanded = !expanded; renderBoard(data); };
+}
+
+setInterval(tick, POLL_MS);
+</script>
+<script src="/web/nav.js"></script>
+<script src="/web/track.js"></script>
+</body>
+</html>

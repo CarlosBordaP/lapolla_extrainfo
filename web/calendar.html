@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polla — Calendario</title>
+  <link rel="stylesheet" href="/web/app.css" />
+  <style>
+    .tabs { display:flex; gap:.4rem; margin:.6rem 0 1rem; flex-wrap:wrap; }
+    .tabs button { background:var(--panel); color:var(--muted); border:1px solid var(--line);
+      border-radius:9px; padding:.45rem .8rem; cursor:pointer; font-size:.9rem; }
+    .tabs button.active { background:var(--green); color:#fff; border-color:var(--green); }
+    .tabs .n { opacity:.7; font-size:.78rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Calendario</h1>
+    <div class="tabs" id="tabs"></div>
+    <div id="content"><div class="empty">Cargando…</div></div>
+  </main>
+
+<script>
+const fmtDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"medium", timeStyle:"short" });
+const fmtTime = iso => new Date(iso).toLocaleTimeString("es-CO", { timeZone:"America/Bogota" });
+
+function uploadAction(m) {
+  switch (m.upload_state) {
+    case "locked":
+      return `<a href="/match?id=${m.id}" title="Predicciones ya procesadas">🔒</a>`;
+    case "open":
+      return `<a class="btn" href="/upload?match=${m.id}">📤 Subir predicción</a>`;
+    case "early":
+      return `<span class="muted" style="font-size:.78rem"
+        title="Se habilita 10 min antes (${fmtDate(m.upload_open_at)})">📤 10 min antes</span>`;
+    case "closed":
+      return `<span class="muted" style="font-size:.78rem" title="La ventana cerró al terminar el partido">⛔ cerrado</span>`;
+    default:
+      return "";
+  }
+}
+
+function item(m) {
+  const live = m.status === "live";
+  const finished = m.status === "finished";
+  const score = (m.home_score ?? "–") + " : " + (m.away_score ?? "–");
+  const readAt = live && m.score_updated_at
+    ? `<span class="muted" style="font-size:.72rem"> · 🔴 leído ${fmtTime(m.score_updated_at)}</span>` : "";
+  const right = finished || live
+    ? `<b>${score}</b> <span class="badge ${m.status}">${live ? "EN VIVO" : "Final"}</span>${readAt}`
+    : `<span class="muted">${fmtDate(m.kickoff_utc)}</span>`;
+  return `<div class="matchlink">
+    <a href="/match?id=${m.id}" style="flex:1">${live ? '<span class="dot"></span>' : ""}${m.home_team}
+      <span class="muted">vs</span> ${m.away_team}
+      <span class="badge">${m.stage === "knockout" ? "Eliminatoria" : "Grupos"}</span></a>
+    <span style="display:flex; gap:.7rem; align-items:center">${right}
+      <span style="font-size:1.15rem">${uploadAction(m)}</span></span>
+  </div>`;
+}
+
+(async () => {
+  const matches = await fetch("/matches").then(r => r.json());
+  const groups = {
+    live: matches.filter(m => m.status === "live"),
+    upcoming: matches.filter(m => m.status === "scheduled"),
+    played: matches.filter(m => m.status === "finished").reverse(),
+  };
+  const defs = [
+    ["live", "🔴 En vivo", groups.live],
+    ["upcoming", "Próximos", groups.upcoming],
+    ["played", "Jugados", groups.played],
+  ].filter(([, , list]) => list.length);  // hide empty tabs
+
+  if (!defs.length) {
+    document.getElementById("content").innerHTML = '<div class="empty">No hay partidos cargados todavía.</div>';
+    return;
+  }
+  // default: live if any, else upcoming, else first available
+  let current = (groups.live.length && "live") || (groups.upcoming.length && "upcoming") || defs[0][0];
+
+  function render() {
+    document.getElementById("tabs").innerHTML = defs.map(([k, label, list]) =>
+      `<button data-k="${k}" class="${k === current ? "active" : ""}">${label} <span class="n">${list.length}</span></button>`).join("");
+    document.querySelectorAll(".tabs button").forEach(b =>
+      b.onclick = () => { current = b.dataset.k; render(); });
+    const list = defs.find(([k]) => k === current)[2];
+    document.getElementById("content").innerHTML = list.map(item).join("");
+  }
+  render();
+})();
+</script>
+<script src="/web/nav.js"></script>
+<script src="/web/track.js"></script>
+</body>
+</html>

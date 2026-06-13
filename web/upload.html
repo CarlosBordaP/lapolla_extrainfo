@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Polla — Subir predicciones</title>
+  <link rel="stylesheet" href="/web/app.css" />
+  <style>
+    .frow { display:flex; gap:.7rem; flex-wrap:wrap; align-items:end; margin:1rem 0; }
+    label { display:flex; flex-direction:column; gap:.25rem; font-size:.8rem; color:var(--muted); }
+    #status { margin:.5rem 0; font-size:.9rem; } .ok { color:#3ad17a; } .err { color:#e2557b; }
+    .notice { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:.8rem; }
+    .notice.lock { border-color:var(--gold); }
+    /* OCR loading bar */
+    .ocr-bar { height:8px; background:#16201a; border:1px solid var(--line); border-radius:6px;
+      overflow:hidden; margin:.6rem 0; }
+    .ocr-fill { height:100%; width:0; background:linear-gradient(90deg,var(--green),var(--gold)); }
+    .ocr-label { font-size:.82rem; color:var(--muted); }
+    /* sticky action bar with Save on top */
+    .editor-bar { position:sticky; top:0; z-index:5; display:flex; gap:.6rem; align-items:center;
+      background:var(--bg); padding:.5rem 0; border-bottom:1px solid var(--line); margin-bottom:.4rem; }
+    /* compact review table */
+    #grid { font-size:.82rem; }
+    #grid th, #grid td { padding:.22rem .35rem; }
+    #grid input { padding:.2rem .35rem; font-size:.82rem; border-radius:5px; }
+    #grid input.user { width:7.6rem; }
+    #grid input.name { width:10.5rem; }
+    #grid input.h, #grid input.a { width:2.5rem; text-align:center; }
+    #grid .del { padding:.1rem .4rem; }
+    .flag { font-size:.66rem; color:var(--muted); white-space:nowrap; }
+    tr.m-fuzzy td { background:#352f0e; }     /* match difuso */
+    tr.m-name td  { background:#10293a; }      /* match por nombre */
+    tr.m-none td  { background:#3a1620; }      /* sin match */
+    tr.m-top td   { background:#1a2117; border-top:2px solid var(--gold); }
+  </style>
+</head>
+<body>
+  <main id="main"><div class="empty">Cargando…</div></main>
+
+<script>
+const main = document.getElementById("main");
+const fmtDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"medium", timeStyle:"short" }) + " (Bogotá)";
+const params = new URLSearchParams(location.search);
+const matchId = params.get("match");
+let uploadId = null;
+
+function matchHeader(m) {
+  return `<p><a href="/calendar">← Calendario</a></p>
+    <h1>${m.home_team} <span class="muted">vs</span> ${m.away_team}</h1>
+    <p class="muted">${m.stage === "knockout" ? "Eliminatoria" : "Fase de grupos"} · ${fmtDate(m.kickoff_utc)}</p>`;
+}
+
+function tbody() { return document.querySelector("#grid tbody"); }
+function setStatus(m, c) { const s = document.getElementById("status"); if (s) { s.textContent = m; s.className = c || ""; } }
+function updateCount() { const el = document.getElementById("countLabel"); if (el) el.textContent = `${tbody().children.length} predicciones`; }
+const FLAGS = { exact:"", fuzzy:"⚠ difuso", name:"⚠ por nombre", none:"✗ sin match", top:"★ tu pronóstico" };
+
+function addRow(p = {}, kind) {
+  const m = kind === "top" ? "top" : (p.match || "exact");
+  const user = p.username || p.ocr_username || "";
+  const name = p.display_name || p.ocr_name || "";
+  const flag = FLAGS[m] || "";
+  const tr = document.createElement("tr");
+  tr.className = "m-" + m;
+  tr.innerHTML = `<td><input class="user" value="${user}"></td>
+    <td><input class="name" value="${name}"></td>
+    <td><input class="h" type="number" min="0" value="${p.pred_home ?? 0}"></td>
+    <td><input class="a" type="number" min="0" value="${p.pred_away ?? 0}"></td>
+    <td style="display:flex;gap:.4rem;align-items:center"><span class="flag">${flag}</span>
+        <button class="btn secondary del">✕</button></td>`;
+  tr.querySelector(".del").onclick = () => { tr.remove(); updateCount(); };
+  tbody().appendChild(tr);
+}
+
+async function matchUpload(id) {
+  const res = await fetch("/matches/" + encodeURIComponent(id));
+  if (!res.ok) { main.innerHTML = '<div class="empty">Partido no encontrado.</div>'; return; }
+  const m = (await res.json()).match;
+
+  if (m.upload_state === "locked") {
+    main.innerHTML = matchHeader(m) +
+      `<div class="notice lock">🔒 Este partido <b>ya fue procesado</b>. No es posible subir otra imagen de predicciones.
+       <div style="margin-top:.6rem"><a class="btn" href="/match?id=${m.id}">Ver predicciones del partido →</a></div></div>`;
+    return;
+  }
+  if (m.upload_state === "early") {
+    main.innerHTML = matchHeader(m) +
+      `<div class="notice">⏳ La subida se habilita <b>10 minutos antes</b> del partido.<br>
+       Disponible a partir de <b>${fmtDate(m.upload_open_at)}</b>.</div>`;
+    return;
+  }
+  if (m.upload_state === "closed") {
+    main.innerHTML = matchHeader(m) +
+      `<div class="notice">⛔ La ventana de subida <b>ya cerró</b> (el partido ya terminó).</div>`;
+    return;
+  }
+
+  main.innerHTML = matchHeader(m) + `
+    <div class="frow">
+      <label>Captura de Golpredictor <input type="file" id="file" accept="image/*" /></label>
+      <button class="btn" id="parseBtn">Leer con OCR</button>
+      <button class="btn secondary" id="manualBtn">✏️ Entrada manual</button>
+    </div>
+    <div id="ocrBar" class="ocr-bar" style="display:none"><div class="ocr-fill" id="ocrFill"></div></div>
+    <div id="status"></div>
+    <div id="editor" style="display:none">
+      <div class="editor-bar">
+        <button class="btn" id="saveBtnTop">💾 Guardar predicciones</button>
+        <button class="btn secondary" id="addRow">+ Fila</button>
+        <span class="ocr-label" id="countLabel"></span>
+      </div>
+      <div id="validation" class="notice" style="display:none; margin:.5rem 0"></div>
+      <p class="muted" id="detected" style="font-size:.8rem"></p>
+      <table id="grid">
+        <thead><tr><th class="l">Usuario</th><th class="l">Nombre</th><th>L</th><th>V</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="frow"><button class="btn" id="saveBtn">💾 Guardar predicciones</button></div>
+    </div>`;
+
+  function startBar() {
+    const bar = document.getElementById("ocrBar"), fill = document.getElementById("ocrFill");
+    bar.style.display = "block"; fill.style.transition = "none"; fill.style.width = "0%";
+    requestAnimationFrame(() => { fill.style.transition = "width 10s linear"; fill.style.width = "95%"; });
+  }
+  function endBar() {
+    const fill = document.getElementById("ocrFill");
+    fill.style.transition = "width .3s"; fill.style.width = "100%";
+    setTimeout(() => { document.getElementById("ocrBar").style.display = "none"; }, 350);
+  }
+  document.getElementById("parseBtn").onclick = async () => {
+    const f = document.getElementById("file").files[0];
+    if (!f) { setStatus("Elige una imagen primero.", "err"); return; }
+    setStatus("🔎 Procesando la lectura de la imagen…");
+    startBar();
+    const fd = new FormData(); fd.append("file", f);
+    try {
+      const r = await fetch(`/matches/${id}/predictions/ingest`, { method:"POST", body: fd });
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      const d = await r.json();
+      uploadId = d.upload_id;
+      document.getElementById("detected").textContent =
+        `Detectado: ${d.home_team} vs ${d.away_team} (${d.kickoff_text}).`;
+
+      const v = d.validation;
+      const miss = v.missing.map(x => `${x.display_name} (@${x.username})`).join(", ");
+      let vh = `📋 Leídas <b>${v.uploaded}</b> de <b>${v.participants}</b> predicciones.`;
+      vh += v.missing.length ? ` Falta(n) <b>${v.missing.length}</b>: ${miss}.` : " ¡Están todas!";
+      if (d.top) {
+        const who = d.top.display_name ? `<b>${d.top.display_name}</b>` : "<b>(elige el usuario en la fila ★)</b>";
+        vh += `<br>⭐ Pronóstico del top <b>${d.top.pred_home}-${d.top.pred_away}</b> → ${who}.`;
+      }
+      const vEl = document.getElementById("validation");
+      vEl.innerHTML = vh; vEl.style.display = "block";
+
+      tbody().innerHTML = "";
+      if (d.top) addRow(d.top, "top");
+      d.predictions.forEach(p => addRow(p));
+      updateCount();
+      document.getElementById("editor").style.display = "block";
+      endBar();
+      setStatus("OCR listo. Revisa las filas resaltadas y guarda.", "ok");
+    } catch (e) { endBar(); setStatus("Error OCR: " + e.message, "err"); }
+  };
+
+  document.getElementById("manualBtn").onclick = () => {
+    document.getElementById("editor").style.display = "block";
+    document.getElementById("detected").textContent = "Entrada manual.";
+    if (!tbody().children.length) addRow();
+    updateCount();
+    setStatus("Entrada manual: agrega las predicciones y guarda.", "ok");
+  };
+  document.getElementById("addRow").onclick = () => { addRow(); updateCount(); };
+
+  async function doSave() {
+    const predictions = [...tbody().querySelectorAll("tr")].map(tr => ({
+      username: tr.querySelector(".user").value.trim(),
+      display_name: tr.querySelector(".name").value.trim(),
+      pred_home: parseInt(tr.querySelector(".h").value, 10),
+      pred_away: parseInt(tr.querySelector(".a").value, 10),
+    })).filter(p => p.username);
+    if (!predictions.length) { setStatus("No hay predicciones para guardar.", "err"); return; }
+    setStatus("Guardando…");
+    try {
+      const r = await fetch(`/matches/${id}/predictions/confirm`, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ predictions, upload_id: uploadId }) });
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      const d = await r.json();
+      main.innerHTML = matchHeader(m) +
+        `<div class="notice lock">✅ Guardado: ${d.saved} predicciones. El partido quedó bloqueado.
+         <div style="margin-top:.6rem"><a class="btn" href="/match?id=${m.id}">Ver predicciones →</a></div></div>`;
+    } catch (e) { setStatus("Error al guardar: " + e.message, "err"); }
+  }
+  document.getElementById("saveBtn").onclick = doSave;
+  document.getElementById("saveBtnTop").onclick = doSave;
+}
+
+// La subida vive dentro del calendario: sin ?match, volvemos al calendario.
+if (matchId) matchUpload(matchId);
+else location.replace("/calendar");
+</script>
+<script src="/web/nav.js"></script>
+<script src="/web/track.js"></script>
+</body>
+</html>
