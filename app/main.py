@@ -480,7 +480,7 @@ def match_file(file_id: int, session: Session = Depends(get_session)) -> FileRes
 
 
 @app.get("/matches/{match_id}")
-def match_detail(match_id: int, session: Session = Depends(get_session)) -> dict:
+def match_detail(match_id: int, request: Request, session: Session = Depends(get_session)) -> dict:
     """Full detail for one match: result, source OCR images, and every prediction
     (with points once the match has a score)."""
     m = session.get(Match, match_id)
@@ -538,6 +538,8 @@ def match_detail(match_id: int, session: Session = Depends(get_session)) -> dict
         "predictions": preds,
         "prediction_count": sum(1 for p in preds if p["has_prediction"]),
         "participant_count": len(preds),
+        "is_admin": _is_admin(request),
+        "manual_score_enabled": get_settings().manual_score_enabled,
     }
 
 
@@ -579,15 +581,21 @@ def edit_prediction(
 
 @app.post("/matches/{match_id}/score")
 def set_score(
-    match_id: int, payload: ManualScoreIn, session: Session = Depends(get_session)
+    match_id: int, payload: ManualScoreIn, request: Request,
+    session: Session = Depends(get_session),
 ) -> dict:
-    """Manual score override / fallback — instantly recomputes standings."""
+    """Manual score override — admin only, requires MANUAL_SCORE_ENABLED=true."""
+    if not get_settings().manual_score_enabled:
+        raise HTTPException(status_code=403, detail="Entrada manual de marcadores deshabilitada.")
+    if not _is_admin(request):
+        raise HTTPException(status_code=403, detail="admin only")
     match = session.get(Match, match_id)
     if match is None:
         raise HTTPException(status_code=404, detail="match not found")
     match.home_score = payload.home_score
     match.away_score = payload.away_score
     match.status = MatchStatus.FINISHED if payload.finished else MatchStatus.LIVE
+    match.score_updated_at = dt.datetime.utcnow()
     session.commit()
     return {"match_id": match.id, "status": match.status.value}
 

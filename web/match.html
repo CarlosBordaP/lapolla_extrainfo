@@ -45,6 +45,26 @@ function predictionsTable(preds, scored, predCount, partCount) {
     <tbody>${rows}</tbody></table>`;
 }
 
+function adminScoreForm(m, isAdmin, manualEnabled) {
+  if (!isAdmin || !manualEnabled) return "";
+  const fin = m.status === "finished";
+  return `<div class="card" style="margin-top:1rem">
+    <p style="margin:0 0 .5rem;font-size:.82rem;color:var(--muted)">▲ Admin · Marcador manual</p>
+    <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+      <input id="sh" type="number" min="0" value="${m.home_score ?? 0}"
+        style="width:3.2rem;text-align:center;font-size:1.3rem;padding:.2rem">
+      <span style="font-size:1.1rem;color:var(--muted)">–</span>
+      <input id="sa" type="number" min="0" value="${m.away_score ?? 0}"
+        style="width:3.2rem;text-align:center;font-size:1.3rem;padding:.2rem">
+      <label style="display:flex;align-items:center;gap:.35rem;font-size:.88rem">
+        <input type="checkbox" id="sfin" ${fin ? "checked" : ""}> Finalizado
+      </label>
+      <button class="btn" id="scoreBtn">Actualizar</button>
+      <span id="scoreMsg" style="font-size:.85rem"></span>
+    </div>
+  </div>`;
+}
+
 function filesSection(files) {
   if (!files.length) return "";
   return `<h2>Capturas del OCR (${files.length})</h2>` +
@@ -60,7 +80,38 @@ function filesSection(files) {
   const scored = d.match.home_score != null && d.match.away_score != null;
   main.innerHTML =
     `<p><a href="/calendar">← Calendario</a></p>` +
-    header(d.match) + predictionsTable(d.predictions, scored, d.prediction_count, d.participant_count) + filesSection(d.files);
+    header(d.match) +
+    adminScoreForm(d.match, d.is_admin, d.manual_score_enabled) +
+    predictionsTable(d.predictions, scored, d.prediction_count, d.participant_count) +
+    filesSection(d.files);
+
+  document.getElementById("scoreBtn")?.addEventListener("click", async () => {
+    const btn = document.getElementById("scoreBtn");
+    const msg = document.getElementById("scoreMsg");
+    btn.disabled = true;
+    msg.textContent = "Guardando…";
+    try {
+      const r = await fetch(`/matches/${id}/score`, {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          home_score: parseInt(document.getElementById("sh").value),
+          away_score: parseInt(document.getElementById("sa").value),
+          finished: document.getElementById("sfin").checked,
+        }),
+      });
+      if (!r.ok) {
+        const e = await r.json();
+        throw new Error(e.detail || r.statusText);
+      }
+      msg.textContent = "✓ Guardado";
+      msg.style.color = "var(--green)";
+      setTimeout(() => location.reload(), 800);
+    } catch (e) {
+      msg.textContent = "Error: " + e.message;
+      msg.style.color = "#e2557b";
+      btn.disabled = false;
+    }
+  });
 })();
 </script>
 <script src="/web/nav.js"></script>

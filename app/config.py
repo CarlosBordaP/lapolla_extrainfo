@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     # --- Access control ---
     # Comma-separated Golpredictor usernames that may see admin views (stats).
     admin_users: str = ""
+    # Set to false to disable manual score entry (once the live API is reliable).
+    manual_score_enabled: bool = True
 
     @property
     def admin_user_set(self) -> set[str]:
