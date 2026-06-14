@@ -31,7 +31,7 @@ from app.ingest import save_match_predictions, save_predictions
 from app.matching import match_and_validate
 from app.models import Match, MatchFile, MatchStatus, Participant, Prediction
 from app.ocr import extract_predictions, extract_standings
-from app.poller import poll_once
+from app.poller import has_live_window, poll_once
 from app.schemas import (
     BulkMatchesIn,
     BulkParticipantsIn,
@@ -145,10 +145,14 @@ _scheduler: BackgroundScheduler | None = None
 
 
 def _scheduled_poll() -> None:
-    """Background job: pull live scores from the provider and update matches."""
-    settings = get_settings()
+    """Background job: pull live scores only during the live window around a match.
+    The scheduler always fires every score_poll_seconds, but the API is only called
+    when a match is within PRE_KICKOFF..POST_KICKOFF of now — protecting free-tier limits."""
     session = SessionLocal()
     try:
+        if not has_live_window(session):
+            return  # no match nearby — skip API call
+        settings = get_settings()
         provider = get_provider(settings.score_provider)
         updated = poll_once(session, provider)
         log.info("poll: updated %d matches", updated)
@@ -282,6 +286,9 @@ async def ingest(
         parsed = extract_predictions(image_bytes, media_type=media_type)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        log.exception("OCR inesperado: %s", e)
+        raise HTTPException(status_code=503, detail=f"OCR falló: {type(e).__name__}: {e}")
 
     # Persist the screenshot (linked to the match later, on confirm via upload_id).
     upload_id, stored_path = save_upload_file(image_bytes, media_type)
@@ -408,6 +415,9 @@ async def match_predictions_ingest(
         parsed = extract_predictions(image_bytes, media_type=media_type)
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        log.exception("OCR inesperado: %s", e)
+        raise HTTPException(status_code=503, detail=f"OCR falló: {type(e).__name__}: {e}")
 
     # Save the screenshot AND the OCR CSV into uploads/<id>.<Home>-<Away>/.
     upload_id, image_path, _csv_path = save_prediction_files(
@@ -478,23 +488,44 @@ def match_detail(match_id: int, session: Session = Depends(get_session)) -> dict
         raise HTTPException(status_code=404, detail="match not found")
 
     scored = m.home_score is not None and m.away_score is not None
+    preds_by_user = {
+        p.username: p
+        for p in session.scalars(select(Prediction).where(Prediction.match_id == match_id)).all()
+    }
+    all_participants = session.scalars(select(Participant).order_by(Participant.display_name)).all()
+
     preds = []
-    for p in session.scalars(select(Prediction).where(Prediction.match_id == match_id)).all():
-        pts = (
-            score_prediction(p.pred_home, p.pred_away, m.home_score, m.away_score, m.stage).total
-            if scored
-            else None
-        )
-        preds.append(
-            {
+    for participant in all_participants:
+        p = preds_by_user.get(participant.username)
+        if p is not None:
+            pts = (
+                score_prediction(p.pred_home, p.pred_away, m.home_score, m.away_score, m.stage).total
+                if scored
+                else None
+            )
+            preds.append({
                 "username": p.username,
-                "display_name": p.participant.display_name,
+                "display_name": participant.display_name,
                 "pred_home": p.pred_home,
                 "pred_away": p.pred_away,
                 "points": pts,
-            }
-        )
-    preds.sort(key=lambda x: (-(x["points"] if x["points"] is not None else -1), x["display_name"]))
+                "has_prediction": True,
+            })
+        else:
+            preds.append({
+                "username": participant.username,
+                "display_name": participant.display_name,
+                "pred_home": None,
+                "pred_away": None,
+                "points": None,
+                "has_prediction": False,
+            })
+
+    preds.sort(key=lambda x: (
+        0 if x["has_prediction"] else 1,
+        -(x["points"] if x["points"] is not None else -1) if x["has_prediction"] else 0,
+        x["display_name"],
+    ))
 
     files = session.scalars(select(MatchFile).where(MatchFile.match_id == match_id)).all()
     return {
@@ -505,6 +536,8 @@ def match_detail(match_id: int, session: Session = Depends(get_session)) -> dict
             for f in files
         ],
         "predictions": preds,
+        "prediction_count": sum(1 for p in preds if p["has_prediction"]),
+        "participant_count": len(preds),
     }
 
 

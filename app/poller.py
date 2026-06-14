@@ -20,7 +20,7 @@ log = logging.getLogger("polla.poller")
 
 # How wide a window around kickoff counts as "worth polling".
 PRE_KICKOFF = dt.timedelta(minutes=15)
-POST_KICKOFF = dt.timedelta(hours=3)
+POST_KICKOFF = dt.timedelta(minutes=130)  # 90 min partido + 40 min de margen
 
 
 def poll_once(session: Session, provider: ScoreProvider) -> int:

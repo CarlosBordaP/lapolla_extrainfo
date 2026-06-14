@@ -27,13 +27,20 @@ function header(m) {
     </div>`;
 }
 
-function predictionsTable(preds, scored) {
+function predictionsTable(preds, scored, predCount, partCount) {
   if (!preds.length) return '<h2>Predicciones</h2><div class="empty">Sin predicciones cargadas.</div>';
-  const rows = preds.map(p => `
-    <tr><td class="l">${p.display_name} <span class="muted">@${p.username}</span></td>
-      <td>${p.pred_home} : ${p.pred_away}</td>
-      <td>${scored ? "<b>" + p.points + "</b>" : "—"}</td></tr>`).join("");
-  return `<h2>Predicciones${scored ? " y puntos" : ""}</h2>
+  const counter = `<span class="badge" style="font-size:.8rem;margin-left:.5rem">${predCount}/${partCount}</span>`;
+  const rows = preds.map(p => {
+    if (!p.has_prediction) {
+      return `<tr class="no-pred"><td class="l muted">${p.display_name} <span class="muted">@${p.username}</span></td>
+        <td class="muted">–</td><td class="muted">–</td></tr>`;
+    }
+    const ph = p.pred_home ?? "–", pa = p.pred_away ?? "–";
+    const pts = scored ? "<b>" + p.points + "</b>" : "—";
+    return `<tr><td class="l">${p.display_name} <span class="muted">@${p.username}</span></td>
+      <td>${ph} : ${pa}</td><td>${pts}</td></tr>`;
+  }).join("");
+  return `<h2>Predicciones${scored ? " y puntos" : ""}${counter}</h2>
     <table><thead><tr><th class="l">Jugador</th><th>Pronóstico</th><th>Puntos</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
 }
@@ -53,7 +60,7 @@ function filesSection(files) {
   const scored = d.match.home_score != null && d.match.away_score != null;
   main.innerHTML =
     `<p><a href="/calendar">← Calendario</a></p>` +
-    header(d.match) + predictionsTable(d.predictions, scored) + filesSection(d.files);
+    header(d.match) + predictionsTable(d.predictions, scored, d.prediction_count, d.participant_count) + filesSection(d.files);
 })();
 </script>
 <script src="/web/nav.js"></script>

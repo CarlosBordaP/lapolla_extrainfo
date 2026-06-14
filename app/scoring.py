@@ -66,34 +66,37 @@ class ScoreBreakdown:
 
 
 def score_prediction(
-    pred_home: int,
-    pred_away: int,
+    pred_home: int | None,
+    pred_away: int | None,
     actual_home: int,
     actual_away: int,
     stage: Stage = Stage.GROUP,
 ) -> ScoreBreakdown:
     """Score a single prediction against an (actual or live) result.
 
-    Works equally for a final result or a live in-progress score, which is what
-    makes the real-time standings table possible: re-call this every time the
-    live score changes.
+    Handles partial predictions (one score missing): only the goals for the
+    present score are awarded. Result and goal difference require both scores.
     """
     mult = stage.multiplier
 
-    result = (
-        RESULT_POINTS * mult
-        if _sign(pred_home - pred_away) == _sign(actual_home - actual_away)
-        else 0
-    )
-    home_goals = GOALS_PER_TEAM_POINTS * mult if pred_home == actual_home else 0
-    away_goals = GOALS_PER_TEAM_POINTS * mult if pred_away == actual_away else 0
-    # Goal difference is the ABSOLUTE margin (Golpredictor awards it even to a
-    # wrong winner): predicting 1-2 for a real 2-1 still matches the 1-goal margin.
-    goal_difference = (
-        GOAL_DIFFERENCE_POINTS * mult
-        if abs(pred_home - pred_away) == abs(actual_home - actual_away)
-        else 0
-    )
+    # Result and goal difference require both scores
+    if pred_home is not None and pred_away is not None:
+        result = (
+            RESULT_POINTS * mult
+            if _sign(pred_home - pred_away) == _sign(actual_home - actual_away)
+            else 0
+        )
+        goal_difference = (
+            GOAL_DIFFERENCE_POINTS * mult
+            if abs(pred_home - pred_away) == abs(actual_home - actual_away)
+            else 0
+        )
+    else:
+        result = 0
+        goal_difference = 0
+
+    home_goals = GOALS_PER_TEAM_POINTS * mult if pred_home is not None and pred_home == actual_home else 0
+    away_goals = GOALS_PER_TEAM_POINTS * mult if pred_away is not None and pred_away == actual_away else 0
 
     return ScoreBreakdown(result, home_goals, away_goals, goal_difference)
 

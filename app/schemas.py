@@ -12,8 +12,8 @@ from app.scoring import Stage
 class PredictionIn(BaseModel):
     username: str
     display_name: str
-    pred_home: int = Field(ge=0)
-    pred_away: int = Field(ge=0)
+    pred_home: int | None = Field(default=None, ge=0)
+    pred_away: int | None = Field(default=None, ge=0)
 
 
 class ConfirmIn(BaseModel):
@@ -90,8 +90,8 @@ class PredictionEditIn(BaseModel):
     """Admin correction of a single user's prediction for a match (e.g. OCR error)."""
 
     username: str
-    pred_home: int = Field(ge=0)
-    pred_away: int = Field(ge=0)
+    pred_home: int | None = Field(default=None, ge=0)
+    pred_away: int | None = Field(default=None, ge=0)
 
 
 class ManualScoreIn(BaseModel):

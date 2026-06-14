@@ -31,15 +31,18 @@ devuélvelo como segunda línea:  TOP,<local>,<visitante>  (si no se ve, omite e
 4) Una línea por cada participante de la tabla:
    - usuario: la columna "Usuario"
    - nombre: la columna "Nombre" (si tiene comas, reemplázalas por espacios)
-   - local: primer número del pronóstico (goles del equipo local)
-   - visitante: segundo número del pronóstico (goles del equipo visitante)
+   - local: primer número del pronóstico (goles del equipo local); déjalo VACÍO si no se ve
+   - visitante: segundo número del pronóstico (goles del equipo visitante); déjalo VACÍO si no se ve
 
 Reglas:
 - El pronóstico aparece como dos números separados por guion entre las banderas \
 (ej. "2 - 0" => local=2, visitante=0).
+- Si un participante NO puso pronóstico (el campo aparece en blanco o con "–"), \
+deja AMBOS campos vacíos: usuario,nombre,,
+- Si solo se ve uno de los dos números, pon el que se ve y deja el otro VACÍO.
 - El marcador del título superior (TOP) es de quien sube la imagen y NO se repite \
 en la tabla; extráelo aparte.
-- No inventes filas; extrae exactamente las que se ven.
+- No inventes filas ni números; extrae exactamente lo que se ve.
 """
 
 
@@ -88,6 +91,14 @@ def _strip_fences(text: str) -> str:
     return text.strip()
 
 
+def _parse_score(s: str) -> int | None:
+    s = s.strip()
+    try:
+        return int(s) if s else None
+    except ValueError:
+        return None
+
+
 def parse_csv(raw: str) -> ParsedScreenshot:
     """Parse the CSV the model returns into a ParsedScreenshot. Robust to commas
     in names (the last two fields are always the scores)."""
@@ -112,14 +123,12 @@ def parse_csv(raw: str) -> ParsedScreenshot:
             continue
         if head == "usuario":  # header row
             continue
-        if len(parts) < 3:
-            continue
-        try:
-            pred_home, pred_away = int(parts[-2]), int(parts[-1])
-        except ValueError:
+        if len(parts) < 4:
             continue
         username = parts[0]
         name = " ".join(parts[1:-2]).strip() or username
+        pred_home = _parse_score(parts[-2])
+        pred_away = _parse_score(parts[-1])
         predictions.append({
             "username": username, "display_name": name,
             "pred_home": pred_home, "pred_away": pred_away,

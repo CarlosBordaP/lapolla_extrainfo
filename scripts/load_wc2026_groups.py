@@ -24,17 +24,17 @@ RAW = """
 2026-06-12 | 15:00 ET | Canada vs Bosnia and Herzegovina | Group B
 2026-06-12 | 21:00 ET | United States vs Paraguay | Group D
 2026-06-13 | 15:00 ET | Qatar vs Switzerland | Group B
-2026-06-13 | 21:00 ET | Brazil vs Morocco | Group C
-2026-06-14 | 00:00 ET | Haiti vs Scotland | Group C
-2026-06-14 | 01:00 ET | Australia vs Türkiye | Group D
+2026-06-13 | 18:00 ET | Brazil vs Morocco | Group C
+2026-06-13 | 21:00 ET | Haiti vs Scotland | Group C
+2026-06-14 | 00:00 ET | Australia vs Türkiye | Group D
 2026-06-14 | 13:00 ET | Germany vs Curaçao | Group E
 2026-06-14 | 16:00 ET | Netherlands vs Japan | Group F
 2026-06-14 | 19:00 ET | Ivory Coast vs Ecuador | Group E
 2026-06-14 | 22:00 ET | Sweden vs Tunisia | Group F
-2026-06-15 | 13:00 ET | Spain vs Cape Verde | Group H
-2026-06-15 | 18:00 ET | Belgium vs Egypt | Group G
+2026-06-15 | 12:00 ET | Spain vs Cape Verde | Group H
+2026-06-15 | 15:00 ET | Belgium vs Egypt | Group G
 2026-06-15 | 18:00 ET | Saudi Arabia vs Uruguay | Group H
-2026-06-16 | 00:00 ET | Iran vs New Zealand | Group G
+2026-06-15 | 21:00 ET | Iran vs New Zealand | Group G
 2026-06-16 | 15:00 ET | France vs Senegal | Group I
 2026-06-16 | 18:00 ET | Iraq vs Norway | Group I
 2026-06-16 | 21:00 ET | Argentina vs Algeria | Group J
@@ -46,14 +46,14 @@ RAW = """
 2026-06-18 | 12:00 ET | Czechia vs South Africa | Group A
 2026-06-18 | 15:00 ET | Switzerland vs Bosnia and Herzegovina | Group B
 2026-06-18 | 18:00 ET | Canada vs Qatar | Group B
-2026-06-18 | 23:00 ET | Mexico vs South Korea | Group A
+2026-06-18 | 21:00 ET | Mexico vs South Korea | Group A
 2026-06-19 | 15:00 ET | United States vs Australia | Group D
 2026-06-19 | 18:00 ET | Scotland vs Morocco | Group C
 2026-06-19 | 21:00 ET | Brazil vs Haiti | Group C
 2026-06-20 | 00:00 ET | Türkiye vs Paraguay | Group D
 2026-06-20 | 13:00 ET | Netherlands vs Sweden | Group F
 2026-06-20 | 16:00 ET | Germany vs Ivory Coast | Group E
-2026-06-20 | 19:00 ET | Ecuador vs Curaçao | Group E
+2026-06-20 | 20:00 ET | Ecuador vs Curaçao | Group E
 2026-06-21 | 00:00 ET | Tunisia vs Japan | Group F
 2026-06-21 | 12:00 ET | Spain vs Saudi Arabia | Group H
 2026-06-21 | 15:00 ET | Belgium vs Iran | Group G
@@ -84,7 +84,7 @@ RAW = """
 2026-06-26 | 20:00 ET | Cape Verde vs Saudi Arabia | Group H
 2026-06-26 | 20:00 ET | Uruguay vs Spain | Group H
 2026-06-26 | 23:00 ET | Egypt vs Iran | Group G
-2026-06-27 | 00:00 ET | New Zealand vs Belgium | Group G
+2026-06-26 | 23:00 ET | New Zealand vs Belgium | Group G
 2026-06-27 | 17:00 ET | Panama vs England | Group L
 2026-06-27 | 17:00 ET | Croatia vs Ghana | Group L
 2026-06-27 | 19:30 ET | Colombia vs Portugal | Group K

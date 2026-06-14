@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     uploads_dir: str = "uploads"  # where OCR screenshots are stored
     # Google Gemini (free tier) — default OCR engine
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-1.5-pro"
+    gemini_model: str = "gemini-2.5-flash"
     # Anthropic Claude vision (alternative OCR engine)
     anthropic_api_key: str = ""
     ocr_model: str = "claude-opus-4-8"
@@ -39,7 +39,7 @@ class Settings(BaseSettings):
 
     # --- Live score provider (Phase 2) ---
     score_provider: str = "worldcup_free"  # key into scores/ registry
-    score_poll_seconds: int = 45
+    score_poll_seconds: int = 30
     score_api_base_url: str = "https://worldcup26.ir"
     score_api_token: str = ""  # free JWT from the provider; empty disables auto-polling
 

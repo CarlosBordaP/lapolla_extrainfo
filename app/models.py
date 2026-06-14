@@ -115,8 +115,8 @@ class Prediction(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id"))
     username: Mapped[str] = mapped_column(ForeignKey("participants.username"))
-    pred_home: Mapped[int] = mapped_column(Integer)
-    pred_away: Mapped[int] = mapped_column(Integer)
+    pred_home: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pred_away: Mapped[int | None] = mapped_column(Integer, nullable=True)
     modified_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
     match: Mapped["Match"] = relationship(back_populates="predictions")
