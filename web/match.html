@@ -27,25 +27,27 @@ function header(m) {
     </div>`;
 }
 
-function predictionsTable(preds, scored, predCount, partCount, isAdmin) {
+function predictionsTable(preds, scored, predCount, partCount, isAdmin, showCumulative) {
   if (!preds.length) return '<h2>Predicciones</h2><div class="empty">Sin predicciones cargadas.</div>';
   const counter = `<span class="badge" style="font-size:.8rem;margin-left:.5rem">${predCount}/${partCount}</span>`;
   const editCol = isAdmin ? '<th></th>' : '';
+  const cumCol = showCumulative ? '<th>Acumulado</th>' : '';
   const rows = preds.map(p => {
     const editBtn = isAdmin
       ? `<button class="btn-link editPredBtn" data-username="${p.username}" data-home="${p.pred_home ?? ""}" data-away="${p.pred_away ?? ""}">✎</button>`
       : '';
+    const cumCell = showCumulative ? `<td>${p.cumulative ?? "–"}</td>` : '';
     if (!p.has_prediction) {
       return `<tr class="no-pred"><td class="l muted">${p.display_name} <span class="muted">@${p.username}</span></td>
-        <td class="muted pred-cell">–</td><td class="muted">–</td><td>${editBtn}</td></tr>`;
+        <td class="muted pred-cell">–</td><td class="muted">–</td>${cumCell}<td>${editBtn}</td></tr>`;
     }
     const ph = p.pred_home ?? "–", pa = p.pred_away ?? "–";
     const pts = scored ? "<b>" + p.points + "</b>" : "—";
     return `<tr><td class="l">${p.display_name} <span class="muted">@${p.username}</span></td>
-      <td class="pred-cell">${ph} : ${pa}</td><td>${pts}</td><td>${editBtn}</td></tr>`;
+      <td class="pred-cell">${ph} : ${pa}</td><td>${pts}</td>${cumCell}<td>${editBtn}</td></tr>`;
   }).join("");
   return `<h2>Predicciones${scored ? " y puntos" : ""}${counter}</h2>
-    <table><thead><tr><th class="l">Jugador</th><th>Pronóstico</th><th>Puntos</th>${editCol}</tr></thead>
+    <table><thead><tr><th class="l">Jugador</th><th>Pronóstico</th><th>Puntos</th>${cumCol}${editCol}</tr></thead>
     <tbody>${rows}</tbody></table>`;
 }
 
@@ -86,7 +88,7 @@ function filesSection(files) {
     `<p><a href="/calendar">← Calendario</a></p>` +
     header(d.match) +
     adminScoreForm(d.match, d.is_admin, d.manual_score_enabled) +
-    predictionsTable(d.predictions, scored, d.prediction_count, d.participant_count, d.is_admin) +
+    predictionsTable(d.predictions, scored, d.prediction_count, d.participant_count, d.is_admin, d.match.status === "finished") +
     filesSection(d.files);
 
   document.getElementById("scoreBtn")?.addEventListener("click", async () => {

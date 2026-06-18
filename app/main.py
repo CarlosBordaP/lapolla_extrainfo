@@ -494,6 +494,28 @@ def match_detail(match_id: int, request: Request, session: Session = Depends(get
     }
     all_participants = session.scalars(select(Participant).order_by(Participant.display_name)).all()
 
+    # Cumulative points per participant through this match (inclusive), for the
+    # "Acumulado" audit column — only meaningful once the match is finished.
+    cumulative_by_user: dict[str, int] = {}
+    if m.status == MatchStatus.FINISHED:
+        earlier_matches = [
+            em for em in session.scalars(
+                select(Match)
+                .where(Match.status == MatchStatus.FINISHED, Match.kickoff_utc <= m.kickoff_utc)
+                .order_by(Match.kickoff_utc)
+            ).all()
+            if em.home_score is not None and em.away_score is not None
+        ]
+        preds_by_match: dict[int, list[Prediction]] = {}
+        for p in session.scalars(
+            select(Prediction).where(Prediction.match_id.in_([em.id for em in earlier_matches]))
+        ).all():
+            preds_by_match.setdefault(p.match_id, []).append(p)
+        for em in earlier_matches:
+            for p in preds_by_match.get(em.id, []):
+                pts = score_prediction(p.pred_home, p.pred_away, em.home_score, em.away_score, em.stage).total
+                cumulative_by_user[p.username] = cumulative_by_user.get(p.username, 0) + pts
+
     preds = []
     for participant in all_participants:
         p = preds_by_user.get(participant.username)
@@ -509,6 +531,7 @@ def match_detail(match_id: int, request: Request, session: Session = Depends(get
                 "pred_home": p.pred_home,
                 "pred_away": p.pred_away,
                 "points": pts,
+                "cumulative": cumulative_by_user.get(participant.username),
                 "has_prediction": True,
             })
         else:
@@ -518,6 +541,7 @@ def match_detail(match_id: int, request: Request, session: Session = Depends(get
                 "pred_home": None,
                 "pred_away": None,
                 "points": None,
+                "cumulative": cumulative_by_user.get(participant.username),
                 "has_prediction": False,
             })
 
