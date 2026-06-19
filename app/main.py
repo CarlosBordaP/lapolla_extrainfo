@@ -718,6 +718,11 @@ def me(request: Request, session: Session = Depends(get_session)) -> dict:
             p = session.get(Participant, username)
             display_name = p.display_name if p else username
 
+    leader_points = standings[0].total_points if standings else None
+    points_behind_leader = (
+        max(0, leader_points - points) if points is not None and leader_points is not None else None
+    )
+
     # Spotlight: a live match if any, else the next upcoming (or any not-finished).
     now = dt.datetime.utcnow()
     spot = session.scalar(
@@ -734,6 +739,29 @@ def me(request: Request, session: Session = Depends(get_session)) -> dict:
         )
         kind = "next" if spot else None
 
+    # Last finished match + the user's own prediction/points on it, for the home card.
+    last_match = None
+    if username:
+        lm = session.scalar(
+            select(Match)
+            .where(Match.status == MatchStatus.FINISHED)
+            .order_by(Match.kickoff_utc.desc())
+        )
+        if lm is not None and lm.home_score is not None and lm.away_score is not None:
+            pred = session.scalar(
+                select(Prediction).where(Prediction.match_id == lm.id, Prediction.username == username)
+            )
+            last_match = {
+                **_match_brief(lm),
+                "pred_home": pred.pred_home if pred else None,
+                "pred_away": pred.pred_away if pred else None,
+                "match_points": (
+                    score_prediction(pred.pred_home, pred.pred_away, lm.home_score, lm.away_score, lm.stage).total
+                    if pred is not None
+                    else None
+                ),
+            }
+
     return {
         "identified": username is not None,
         "username": username,
@@ -742,7 +770,9 @@ def me(request: Request, session: Session = Depends(get_session)) -> dict:
         "rank": rank,
         "points": points,
         "players": len(standings),
+        "points_behind_leader": points_behind_leader,
         "spotlight": _match_brief(spot, kind) if spot else None,
+        "last_match": last_match,
     }
 
 
@@ -794,8 +824,10 @@ def me_history(request: Request, session: Session = Depends(get_session)) -> dic
             order = sorted(cum.items(), key=lambda kv: (-kv[1], kv[0]))
             ranks = assign_ranks([v for _, v in order])
             rank = ranks[[u for u, _ in order].index(username)]
+            points_behind_leader = max(cum.values()) - cum[username]
         else:
             rank = None
+            points_behind_leader = None
         points.append(
             {
                 "match_id": m.id,
@@ -808,6 +840,7 @@ def me_history(request: Request, session: Session = Depends(get_session)) -> dic
                 "rank": rank,
                 "players": len(cum),
                 "played": target_pred is not None,
+                "points_behind_leader": points_behind_leader,
             }
         )
 

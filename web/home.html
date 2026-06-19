@@ -5,25 +5,78 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Polla — Inicio</title>
   <link rel="stylesheet" href="/web/app.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
 </head>
 <body>
   <main id="main"><div class="empty">Cargando…</div></main>
 
 <script>
 const fmtDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"medium", timeStyle:"short" }) + " (Bogotá)";
+const fmtShortDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"short", timeStyle:"short" });
 const fmtTime = iso => new Date(iso).toLocaleTimeString("es-CO", { timeZone:"America/Bogota" });
+const short = t => t.slice(0, 3).toUpperCase();
+
+// Team name → ISO 3166-1 code (flagcdn.com), covering the 48 World Cup 2026 teams.
+const COUNTRY_CODE = {
+  "Alemania":"de", "Arabia Saudita":"sa", "Argelia":"dz", "Argentina":"ar", "Australia":"au",
+  "Austria":"at", "Bosnia y Herzegovina":"ba", "Brasil":"br", "Bélgica":"be", "Cabo Verde":"cv",
+  "Canadá":"ca", "Catar":"qa", "Colombia":"co", "Corea del Sur":"kr", "Costa de Marfil":"ci",
+  "Croacia":"hr", "Curazao":"cw", "Ecuador":"ec", "Egipto":"eg", "Escocia":"gb-sct",
+  "España":"es", "Estados Unidos":"us", "Francia":"fr", "Ghana":"gh", "Haití":"ht",
+  "Inglaterra":"gb-eng", "Irak":"iq", "Irán":"ir", "Japón":"jp", "Jordania":"jo",
+  "Marruecos":"ma", "México":"mx", "Noruega":"no", "Nueva Zelanda":"nz", "Panamá":"pa",
+  "Paraguay":"py", "Países Bajos":"nl", "Portugal":"pt", "RD Congo":"cd", "República Checa":"cz",
+  "Senegal":"sn", "Sudáfrica":"za", "Suecia":"se", "Suiza":"ch", "Turquía":"tr",
+  "Túnez":"tn", "Uruguay":"uy", "Uzbekistán":"uz",
+};
+function flag(team) {
+  const cc = COUNTRY_CODE[team];
+  if (!cc) return `<span class="flag-circle"></span>`;
+  return `<span class="flag-circle"><img src="https://flagcdn.com/h80/${cc}.png" alt="${team}" loading="lazy"></span>`;
+}
 
 function spotlightCard(s) {
-  if (!s) return `<div class="card"><div class="k">Partido</div>
+  if (!s) return `<div class="card"><div class="card-head"><span class="k-label">Próximo partido</span></div>
     <div class="s">No hay partidos programados todavía.</div></div>`;
   const live = s.kind === "live";
   const score = (s.home_score ?? "–") + " : " + (s.away_score ?? "–");
-  return `<div class="card ${live ? "gold" : ""}">
-    <div class="k">${live ? '<span class="dot"></span>En vivo ahora' : "Próximo partido"}</div>
-    <div class="v" style="font-size:1.25rem">${s.home_team} <span class="muted">vs</span> ${s.away_team}</div>
-    <div class="s">${live ? "Marcador " + score + (s.score_updated_at ? " · leído " + fmtTime(s.score_updated_at) + " (Bogotá)" : "") : fmtDate(s.kickoff_utc)}</div>
-    <a class="cta" href="/match?id=${s.id}">Ver partido →</a>
-    ${live ? '<a class="cta" href="/board" style="margin-left:1rem">Tabla en vivo →</a>' : ""}
+  const metaRight = live
+    ? (s.score_updated_at ? "Leído " + fmtTime(s.score_updated_at) : "")
+    : fmtShortDate(s.kickoff_utc);
+  return `<div class="card ${live ? "gold" : ""} clickable" data-go="/match?id=${s.id}" title="Ver partido">
+    <div class="card-head">
+      <span class="k-label">${live ? '<span class="dot"></span>En vivo ahora' : "Próximo partido"}</span>
+      <span class="k-meta">${metaRight}</span>
+    </div>
+    <div class="match-row">
+      <div class="team-col">${flag(s.home_team)}<span class="team">${s.home_team}</span></div>
+      <span class="v" style="font-size:1.4rem">${live ? score : "vs"}</span>
+      <div class="team-col">${flag(s.away_team)}<span class="team">${s.away_team}</span></div>
+    </div>
+  </div>`;
+}
+
+function lastMatchCard(lm) {
+  if (!lm) return `<div class="card"><div class="card-head"><span class="k-label">Último partido</span></div>
+    <div class="s">Aún no se ha jugado ningún partido.</div></div>`;
+  const score = lm.home_score + " : " + lm.away_score;
+  const hasPred = lm.pred_home != null;
+  const predTxt = hasPred ? `Predicción: ${lm.pred_home}-${lm.pred_away}` : "Sin pronóstico";
+  return `<div class="card clickable" data-go="/match?id=${lm.id}" title="Ver partido">
+    <div class="card-head">
+      <span class="k-label">Último partido</span>
+      <span class="tag-success">✓ Finalizado</span>
+    </div>
+    <div class="match-row">
+      <div class="team-col">${flag(lm.home_team)}<span class="team">${short(lm.home_team)}</span></div>
+      <span class="v" style="font-size:1.4rem">${score}</span>
+      <div class="team-col">${flag(lm.away_team)}<span class="team">${short(lm.away_team)}</span></div>
+    </div>
+    <div class="pred-box">
+      <span class="muted-label">${predTxt}</span>
+      ${hasPred && lm.match_points != null ? `<span class="pts">+ ${lm.match_points} pts</span>` : ""}
+    </div>
   </div>`;
 }
 
@@ -32,10 +85,17 @@ function positionCard(me) {
     return `<div class="card"><div class="k">Tu posición</div>
       <div class="v">—</div><div class="s">Aún no tienes puntos. Aparecerás cuando se juegue un partido con tu predicción.</div></div>`;
   }
-  return `<div class="card gold"><div class="k">Tu posición</div>
+  const leaderMsg = me.rank === 1
+    ? "🏆 ¡Vas liderando la tabla!"
+    : me.points_behind_leader != null
+      ? `Estas a <b style="color:var(--text)">${me.points_behind_leader}</b> pts del líder`
+      : "";
+  return `<div class="card gold clickable" data-go="/board" title="Ver tabla completa">
+    <div class="k">Tu posición <span class="chev">›</span></div>
     <div class="v">#${me.rank}<span style="font-size:1rem" class="muted"> / ${me.players}</span></div>
-    <div class="s">${me.points} puntos · ${me.display_name}</div>
-    <a class="cta" href="/board">Ver tabla completa →</a></div>`;
+    <div class="s">${me.points} puntos</div>
+    ${leaderMsg ? `<div class="s" style="margin-top:.3rem">${leaderMsg}</div>` : ""}
+  </div>`;
 }
 
 (async () => {
@@ -54,11 +114,13 @@ function positionCard(me) {
         ${spotlightCard(me.spotlight)}
       </div>`;
     document.getElementById("idBtn").onclick = () => window.openIdentify();
+    main.querySelectorAll(".clickable[data-go]").forEach(el =>
+      el.addEventListener("click", () => { location.href = el.dataset.go; }));
     return;
   }
 
   main.innerHTML = `<h1>Hola, ${me.display_name} 👋</h1>
-    <div class="cards">${positionCard(me)}${spotlightCard(me.spotlight)}</div>
+    <div class="cards">${positionCard(me)}${lastMatchCard(me.last_match)}${spotlightCard(me.spotlight)}</div>
     <h2>Tu evolución</h2>
     <div class="card">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:.5rem; flex-wrap:wrap">
@@ -66,20 +128,23 @@ function positionCard(me) {
         <div class="seg">
           <button data-mode="rank">Puesto</button>
           <button data-mode="points">Puntos</button>
+          <button data-mode="leader">Líder</button>
         </div>
       </div>
       <div id="evo" style="margin-top:.6rem"><div class="empty">Cargando…</div></div>
     </div>
     <h2>Accesos</h2>
     <div class="cards">
-      <div class="card"><div class="k">Calendario</div><div class="s">Partidos, resultados y subir predicción.</div><a class="cta" href="/calendar">Abrir →</a></div>
-      <div class="card"><div class="k">Tabla en vivo</div><div class="s">Posiciones en tiempo real.</div><a class="cta" href="/board">Abrir →</a></div>
+      <div class="card clickable" data-go="/calendar" title="Abrir calendario"><div class="k">Calendario <span class="chev">›</span></div><div class="s">Partidos, resultados y subir predicción.</div></div>
+      <div class="card clickable" data-go="/board" title="Abrir tabla en vivo"><div class="k">Tabla en vivo <span class="chev">›</span></div><div class="s">Posiciones en tiempo real.</div></div>
     </div>`;
+
+  main.querySelectorAll(".clickable[data-go]").forEach(el =>
+    el.addEventListener("click", () => { location.href = el.dataset.go; }));
 
   // Evolution chart — toggle between cumulative points and position over time.
   const hist = await fetch("/me/history").then(r => r.json());
   const pts = hist.points || [];
-  const short = t => t.slice(0, 3).toUpperCase();
   const lbl = p => `${short(p.home_team)}-${short(p.away_team)}`;
 
   const pointsSeries = pts.map(p => ({
@@ -101,6 +166,16 @@ function positionCard(me) {
   };
   const rankTicks = intTicks(1, playersMax);
 
+  const leaderPts = pts.filter(p => p.points_behind_leader != null);
+  const leaderGapMax = Math.max(1, ...leaderPts.map(p => p.points_behind_leader));
+  const leaderSeries = leaderPts.map(p => ({
+    label: lbl(p), value: p.points_behind_leader,
+    tooltip: p.points_behind_leader === 0
+      ? `${p.home_team} ${p.score} ${p.away_team} · ¡eras el líder!`
+      : `${p.home_team} ${p.score} ${p.away_team} · a ${p.points_behind_leader} pts del líder`,
+  }));
+  const leaderTicks = intTicks(0, leaderGapMax);
+
   const evo = document.getElementById("evo");
   function render(mode) {
     document.querySelectorAll(".seg button").forEach(b =>
@@ -110,6 +185,12 @@ function positionCard(me) {
         invert: true, domainMin: 1, domainMax: playersMax, ticks: rankTicks,
         pointLabels: true, format: v => "#" + v,
         emptyText: "Tu puesto aparecerá cuando se jueguen partidos.",
+      });
+    } else if (mode === "leader") {
+      lineChart(evo, leaderSeries, {
+        invert: true, domainMin: 0, domainMax: leaderGapMax, ticks: leaderTicks,
+        pointLabels: true,
+        emptyText: "Tu distancia al líder aparecerá cuando se jueguen partidos.",
       });
     } else {
       lineChart(evo, pointsSeries, {

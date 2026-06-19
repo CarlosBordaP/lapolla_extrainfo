@@ -66,16 +66,16 @@
     ticks.forEach(v => {
       const yy = y(v);
       svg.appendChild(el("line", { x1: PAD.l, x2: W - PAD.r, y1: yy, y2: yy,
-        stroke: "#26342b", "stroke-width": 1 }));
+        stroke: "#2d3449", "stroke-width": 1 }));
       svg.appendChild(el("text", { x: PAD.l - 6, y: yy + 3, "text-anchor": "end",
-        fill: "#8aa394", "font-size": 10 }, fmt(v)));
+        fill: "#9aa8c9", "font-size": 10 }, fmt(v)));
     });
 
     const stepLbl = Math.ceil(n / 8);
     data.forEach((p, i) => {
       if (i % stepLbl === 0 || i === n - 1) {
         svg.appendChild(el("text", { x: x(i), y: H - PAD.b + 16, "text-anchor": "middle",
-          fill: "#8aa394", "font-size": 10 }, p.label));
+          fill: "#9aa8c9", "font-size": 10 }, p.label));
       }
     });
 
@@ -84,12 +84,12 @@
       let d = `M ${x(0)} ${y(data[0].value)}`;
       data.forEach((p, i) => { d += ` L ${x(i)} ${y(p.value)}`; });
       d += ` L ${x(n - 1)} ${y(dmin)} L ${x(0)} ${y(dmin)} Z`;
-      svg.appendChild(el("path", { d, fill: "rgba(212,175,55,.12)", stroke: "none" }));
+      svg.appendChild(el("path", { d, fill: "rgba(245,158,11,.12)", stroke: "none" }));
     }
     if (n > 1) {
       let dl = `M ${x(0)} ${y(data[0].value)}`;
       data.forEach((p, i) => { if (i) dl += ` L ${x(i)} ${y(p.value)}`; });
-      svg.appendChild(el("path", { d: dl, fill: "none", stroke: "#d4af37", "stroke-width": 2.5,
+      svg.appendChild(el("path", { d: dl, fill: "none", stroke: "#f59e0b", "stroke-width": 2.5,
         "stroke-linejoin": "round", "stroke-linecap": "round" }));
     }
 
@@ -97,7 +97,7 @@
       const last = i === n - 1;
       const g = el("g", {});
       g.appendChild(el("circle", { cx: x(i), cy: y(p.value), r: last ? 5 : 3.5,
-        fill: last ? "#d4af37" : "#1f7a4d", stroke: "#0f1411", "stroke-width": 1.5 }));
+        fill: last ? "#f59e0b" : "#10b981", stroke: "#0b1326", "stroke-width": 1.5 }));
       g.appendChild(el("title", {}, p.tooltip || `${p.label}: ${fmt(p.value)}`));
       svg.appendChild(g);
 
@@ -106,7 +106,7 @@
         const above = y(p.value) - 9 > PAD.t + 6;
         svg.appendChild(el("text", {
           x: x(i), y: y(p.value) + (above ? -9 : 15), "text-anchor": "middle",
-          fill: "#eef3ef", "font-size": 11, "font-weight": 700,
+          fill: "#dae2fd", "font-size": 11, "font-weight": 700,
         }, fmt(p.value)));
       }
     });
