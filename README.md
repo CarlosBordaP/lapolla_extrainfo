@@ -32,7 +32,7 @@ app/
   schemas.py     # API request models
   models.py      # MySQL schema (participants / matches / predictions / page_visits)
   db.py config.py main.py
-  scores/        # swappable live-score providers (base + worldcup_free)
+  scores/        # swappable live-score providers (base + scores365 + worldcup_free)
 web/             # ingest.html, standings.html (/board), analytics.html (/insights), track.js
 tests/           # scoring, standings, ingest, poller, analytics, tracking, HTTP integration
 

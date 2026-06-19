@@ -40,12 +40,13 @@ def normalize_team(name: str) -> str:
     """Canonical team key for matching across language + accents.
 
     México/Mexico collapse via accent-stripping; Sudáfrica/South Africa collapse
-    via the Spanish→English alias map (app/teams.py).
+    via the Spanish→English alias map (app/teams.py). "&" vs "and" (e.g. "Bosnia
+    & Herzegovina") collapses here so providers don't need their own alias entry.
     """
     stripped = "".join(
         c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c)
     )
-    base = stripped.lower().strip()
+    base = stripped.lower().strip().replace("&", "and")
     return TEAM_ALIASES.get(base, base)
 
 

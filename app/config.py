@@ -40,10 +40,11 @@ class Settings(BaseSettings):
         return {u.strip() for u in self.admin_users.split(",") if u.strip()}
 
     # --- Live score provider (Phase 2) ---
-    score_provider: str = "worldcup_free"  # key into scores/ registry
+    score_provider: str = "scores365"  # key into scores/ registry
     score_poll_seconds: int = 30
+    # Only used by the "worldcup_free" provider (kept as a fallback option).
     score_api_base_url: str = "https://worldcup26.ir"
-    score_api_token: str = ""  # free JWT from the provider; empty disables auto-polling
+    score_api_token: str = ""  # free JWT from worldcup_free; unused by scores365
 
     @property
     def database_url(self) -> str:

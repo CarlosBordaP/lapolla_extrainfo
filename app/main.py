@@ -23,6 +23,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import app.scores.scores365  # noqa: F401 — registers the provider
 import app.scores.worldcup_free  # noqa: F401 — registers the provider
 from app.analytics import compute_highlights, compute_match_stats, compute_player_stats
 from app.config import get_settings

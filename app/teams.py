@@ -2,8 +2,9 @@
 English. We normalize both sides to a canonical key so matches auto-link.
 
 Keys are accent-stripped, lowercased Spanish names; values are the accent-stripped,
-lowercased English form the score API uses. Same-language and accent-only
-differences (México/Mexico) already collapse without an entry here.
+lowercased English form the active score provider uses (currently scores365 —
+e.g. "usa", "turkiye", "czechia"). Same-language and accent-only differences
+(México/Mexico) already collapse without an entry here.
 
 Not exhaustive for all 48 nations — extend as needed, or use the manual link
 endpoint (POST /matches/{id}/link) for any pair the map doesn't cover.
@@ -14,8 +15,8 @@ from __future__ import annotations
 # spanish_normalized -> english_normalized
 TEAM_ALIASES: dict[str, str] = {
     "sudafrica": "south africa",
-    "estados unidos": "united states",
-    "eeuu": "united states",
+    "estados unidos": "usa",
+    "eeuu": "usa",
     "inglaterra": "england",
     "alemania": "germany",
     "espana": "spain",
@@ -48,9 +49,9 @@ TEAM_ALIASES: dict[str, str] = {
     "irak": "iraq",
     "emiratos arabes unidos": "united arab emirates",
     "jordania": "jordan",
-    "turquia": "turkey",
+    "turquia": "turkiye",
     "grecia": "greece",
-    "republica checa": "czech republic",
+    "republica checa": "czechia",
     "ucrania": "ukraine",
     "corea del norte": "north korea",
     "bosnia y herzegovina": "bosnia and herzegovina",

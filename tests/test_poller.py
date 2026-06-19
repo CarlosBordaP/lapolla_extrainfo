@@ -12,7 +12,8 @@ from sqlalchemy.orm import sessionmaker
 from app.models import Base, Match, MatchStatus, Participant, Prediction
 from app.poller import has_live_window, poll_once
 from app.scoring import Stage
-from app.scores.base import ProviderGame
+from app.scores.base import ProviderGame, normalize_team
+from app.scores.scores365 import parse_games as parse_games_365
 from app.scores.worldcup_free import parse_games
 from app.standings import compute_standings
 
@@ -73,6 +74,41 @@ def test_parse_games_maps_api_shape():
     assert (g1.provider_match_id, g1.home_score, g1.away_score) == ("1", 2, 0)
     assert g1.finished and g1.started
     assert g2.home_score == 0 and not g2.started and not g2.finished
+
+
+def test_parse_games_365_maps_api_shape():
+    raw = [
+        {  # ended
+            "id": 4627866, "statusGroup": 4, "gameTime": 90.0,
+            "homeCompetitor": {"name": "Mexico", "score": 2.0},
+            "awayCompetitor": {"name": "South Africa", "score": 0.0},
+        },
+        {  # scheduled — score and gameTime use -1 as the "not started" sentinel
+            "id": 4627857, "statusGroup": 2, "gameTime": -1.0,
+            "homeCompetitor": {"name": "USA", "score": -1.0},
+            "awayCompetitor": {"name": "Australia", "score": -1.0},
+        },
+        {  # live
+            "id": 4627900, "statusGroup": 1, "gameTime": 30.0,
+            "homeCompetitor": {"name": "Brazil", "score": 1.0},
+            "awayCompetitor": {"name": "Morocco", "score": 0.0},
+        },
+    ]
+    g1, g2, g3 = parse_games_365(raw)
+    assert (g1.provider_match_id, g1.home_score, g1.away_score, g1.minute) == ("4627866", 2, 0, 90)
+    assert g1.finished and g1.started
+    assert g2.home_score is None and g2.minute is None and not g2.started and not g2.finished
+    assert (g3.home_score, g3.minute) == (1, 30)
+    assert g3.started and not g3.finished
+
+
+def test_team_aliases_match_scores365_naming():
+    # Spanish names whose English form differs from a plain accent-strip — confirm
+    # they resolve to exactly what 365scores reports (verified against the live API).
+    assert normalize_team("Estados Unidos") == normalize_team("USA")
+    assert normalize_team("Turquía") == normalize_team("Turkiye")
+    assert normalize_team("República Checa") == normalize_team("Czechia")
+    assert normalize_team("Bosnia y Herzegovina") == normalize_team("Bosnia & Herzegovina")
 
 
 # --- poll_once: auto-link by name, set scores/status ----------------------
