@@ -8,11 +8,22 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <style>
-    .frow { display:flex; gap:.7rem; flex-wrap:wrap; align-items:end; margin:1rem 0; }
-    label { display:flex; flex-direction:column; gap:.25rem; font-size:.8rem; color:var(--muted); }
+    .frow { display:flex; gap:.7rem; flex-wrap:wrap; align-items:center; margin:1rem 0; }
     #status { margin:.5rem 0; font-size:.9rem; } .ok { color:#3ad17a; } .err { color:#e2557b; }
     .notice { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:.8rem; }
     .notice.lock { border-color:var(--gold); }
+    /* left-aligned, content-sized match card (instead of a full-width centered header) */
+    .match-card { width:fit-content; margin:1rem 0 1.2rem; }
+    .match-card .mc-teams { display:flex; align-items:center; gap:.6rem; }
+    .match-card .mc-teams .flag-circle { width:2.1rem; height:2.1rem; }
+    .match-card .mc-teams .team-name { font-weight:700; font-size:1.05rem; }
+    .match-card .vs-mid { color:var(--muted); font-weight:700; font-size:.85rem; }
+    .match-card .mc-meta { color:var(--muted); font-size:.85rem; margin:.5rem 0 0; }
+    /* file picker — native input hidden, styled label drives it */
+    .file-picker { display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; }
+    .file-picker input[type=file] { position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; }
+    .file-btn { display:inline-flex; align-items:center; gap:.45rem; }
+    #fileName { font-size:.85rem; color:var(--muted); }
     /* OCR loading bar */
     .ocr-bar { height:8px; background:#16201a; border:1px solid var(--line); border-radius:6px;
       overflow:hidden; margin:.6rem 0; }
@@ -28,8 +39,7 @@
     #grid input.user { width:7.6rem; }
     #grid input.name { width:10.5rem; }
     #grid input.h, #grid input.a { width:2.5rem; text-align:center; }
-    #grid .del { padding:.1rem .4rem; }
-    .flag { font-size:.66rem; color:var(--muted); white-space:nowrap; }
+    .row-flag { font-size:.66rem; color:var(--muted); white-space:nowrap; }
     tr.m-fuzzy td { background:#352f0e; }     /* match difuso */
     tr.m-name td  { background:#10293a; }      /* match por nombre */
     tr.m-none td  { background:#3a1620; }      /* sin match */
@@ -39,6 +49,7 @@
 <body>
   <main id="main"><div class="empty">Cargando…</div></main>
 
+<script src="/web/teams.js"></script>
 <script>
 const main = document.getElementById("main");
 const fmtDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"medium", timeStyle:"short" }) + " (Bogotá)";
@@ -48,8 +59,14 @@ let uploadId = null;
 
 function matchHeader(m) {
   return `<p><a href="/calendar">← Calendario</a></p>
-    <h1>${m.home_team} <span class="muted">vs</span> ${m.away_team}</h1>
-    <p class="muted">${m.stage === "knockout" ? "Eliminatoria" : "Fase de grupos"} · ${fmtDate(m.kickoff_utc)}</p>`;
+    <div class="card match-card">
+      <div class="mc-teams">
+        ${flag(m.home_team)}<span class="team-name">${m.home_team}</span>
+        <span class="vs-mid">vs</span>
+        ${flag(m.away_team)}<span class="team-name">${m.away_team}</span>
+      </div>
+      <p class="mc-meta">${m.stage === "knockout" ? "Eliminatoria" : "Fase de grupos"} · ${fmtDate(m.kickoff_utc)}</p>
+    </div>`;
 }
 
 function tbody() { return document.querySelector("#grid tbody"); }
@@ -61,23 +78,46 @@ function addRow(p = {}, kind) {
   const m = kind === "top" ? "top" : (p.match || "exact");
   const user = p.username || p.ocr_username || "";
   const name = p.display_name || p.ocr_name || "";
-  const flag = FLAGS[m] || "";
+  const rowFlag = FLAGS[m] || "";
   const tr = document.createElement("tr");
   tr.className = "m-" + m;
   tr.innerHTML = `<td><input class="user" value="${user}"></td>
     <td><input class="name" value="${name}"></td>
     <td><input class="h" type="number" min="0" value="${p.pred_home ?? ''}"></td>
     <td><input class="a" type="number" min="0" value="${p.pred_away ?? ''}"></td>
-    <td style="display:flex;gap:.4rem;align-items:center"><span class="flag">${flag}</span>
-        <button class="btn secondary del">✕</button></td>`;
+    <td style="display:flex;gap:.4rem;align-items:center"><span class="row-flag">${rowFlag}</span>
+        <button class="icon-btn sm del" title="Quitar fila">✕</button></td>`;
   tr.querySelector(".del").onclick = () => { tr.remove(); updateCount(); };
   tbody().appendChild(tr);
+}
+
+function forceOpenButton(id) {
+  return `<div style="margin-top:.6rem">
+    <button class="icon-btn warn" id="forceOpenBtn" title="Forzar apertura (admin)">🔓</button>
+  </div>`;
+}
+function wireForceOpen(id) {
+  const btn = document.getElementById("forceOpenBtn");
+  if (!btn) return;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      const r = await fetch(`/matches/${id}/upload-window`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ open: true }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
+      matchUpload(id);
+    } catch (e) { setStatus("Error: " + e.message, "err"); btn.disabled = false; }
+  };
 }
 
 async function matchUpload(id) {
   const res = await fetch("/matches/" + encodeURIComponent(id));
   if (!res.ok) { main.innerHTML = '<div class="empty">Partido no encontrado.</div>'; return; }
-  const m = (await res.json()).match;
+  const data = await res.json();
+  const m = data.match;
+  const isAdmin = data.is_admin;
 
   if (m.upload_state === "locked") {
     main.innerHTML = matchHeader(m) +
@@ -88,27 +128,34 @@ async function matchUpload(id) {
   if (m.upload_state === "early") {
     main.innerHTML = matchHeader(m) +
       `<div class="notice">⏳ La subida se habilita <b>10 minutos antes</b> del partido.<br>
-       Disponible a partir de <b>${fmtDate(m.upload_open_at)}</b>.</div>`;
+       Disponible a partir de <b>${fmtDate(m.upload_open_at)}</b>.
+       ${isAdmin ? "Si no vas a tener la imagen a tiempo, puedes forzar la apertura." + forceOpenButton(id) : ""}</div>`;
+    wireForceOpen(id);
     return;
   }
   if (m.upload_state === "closed") {
     main.innerHTML = matchHeader(m) +
-      `<div class="notice">⛔ La ventana de subida <b>ya cerró</b> (el partido ya terminó).</div>`;
+      `<div class="notice">⛔ La ventana de subida <b>ya cerró</b> (el partido ya terminó).
+       ${isAdmin ? "<br>Puedes forzar la apertura para subir una imagen, o ir a la página del partido y editar las predicciones una por una si no la tienes." + forceOpenButton(id) +
+         `<div style="margin-top:.5rem"><a href="/match?id=${m.id}">✏️ Editar predicciones una por una →</a></div>` : ""}</div>`;
+    wireForceOpen(id);
     return;
   }
 
   main.innerHTML = matchHeader(m) + `
-    <div class="frow">
-      <label>Captura de Golpredictor <input type="file" id="file" accept="image/*" /></label>
-      <button class="btn" id="parseBtn">Leer con OCR</button>
-      <button class="btn secondary" id="manualBtn">✏️ Entrada manual</button>
+    <div class="frow file-picker">
+      <input type="file" id="file" accept="image/*" />
+      <label for="file" class="btn secondary file-btn">📁 Elegir captura</label>
+      <span id="fileName">Ningún archivo seleccionado</span>
+      <button class="icon-btn fill" id="parseBtn" title="Leer con OCR">🔎</button>
     </div>
     <div id="ocrBar" class="ocr-bar" style="display:none"><div class="ocr-fill" id="ocrFill"></div></div>
     <div id="status"></div>
+    ${isAdmin ? `<p class="muted" style="font-size:.8rem">¿No tienes la imagen? <a href="/match?id=${id}">Edita las predicciones una por una en la página del partido →</a></p>` : ""}
     <div id="editor" style="display:none">
       <div class="editor-bar">
         <button class="btn" id="saveBtnTop">💾 Guardar predicciones</button>
-        <button class="btn secondary" id="addRow">+ Fila</button>
+        <button class="icon-btn sm" id="addRow" title="Agregar fila">➕</button>
         <span class="ocr-label" id="countLabel"></span>
       </div>
       <div id="validation" class="notice" style="display:none; margin:.5rem 0"></div>
@@ -119,6 +166,11 @@ async function matchUpload(id) {
       </table>
       <div class="frow"><button class="btn" id="saveBtn">💾 Guardar predicciones</button></div>
     </div>`;
+
+  document.getElementById("file").onchange = (e) => {
+    const f = e.target.files[0];
+    document.getElementById("fileName").textContent = f ? f.name : "Ningún archivo seleccionado";
+  };
 
   function startBar() {
     const bar = document.getElementById("ocrBar"), fill = document.getElementById("ocrFill");
@@ -171,13 +223,6 @@ async function matchUpload(id) {
     } catch (e) { endBar(); setStatus("Error OCR: " + e.message, "err"); }
   };
 
-  document.getElementById("manualBtn").onclick = () => {
-    document.getElementById("editor").style.display = "block";
-    document.getElementById("detected").textContent = "Entrada manual.";
-    if (!tbody().children.length) addRow();
-    updateCount();
-    setStatus("Entrada manual: agrega las predicciones y guarda.", "ok");
-  };
   document.getElementById("addRow").onclick = () => { addRow(); updateCount(); };
 
   async function doSave() {

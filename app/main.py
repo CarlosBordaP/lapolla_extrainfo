@@ -801,8 +801,11 @@ def me_history(request: Request, session: Session = Depends(get_session)) -> dic
         ).all():
             by_match.setdefault(p.match_id, []).append(p)
 
+    # Pass 1: accumulate running totals and snapshot them after each match —
+    # we need the FULL series before we know who today's leader even is.
     cum: dict[str, int] = {}  # username -> cumulative points so far
-    points = []
+    snapshots: list[dict[str, int]] = []
+    match_meta = []
     for m in matches:
         target_pred = None
         for p in by_match.get(m.id, []):
@@ -820,30 +823,46 @@ def me_history(request: Request, session: Session = Depends(get_session)) -> dic
             if target_pred is not None
             else 0
         )
-        # Position after this match (1 = best, ties shared), among players so far.
-        if username in cum:
-            order = sorted(cum.items(), key=lambda kv: (-kv[1], kv[0]))
-            ranks = assign_ranks([v for _, v in order])
-            rank = ranks[[u for u, _ in order].index(username)]
-            points_behind_leader = max(cum.values()) - cum[username]
-        else:
-            rank = None
-            points_behind_leader = None
-        points.append(
-            {
-                "match_id": m.id,
-                "home_team": m.home_team,
-                "away_team": m.away_team,
-                "score": f"{m.home_score}-{m.away_score}",
-                "kickoff_utc": _iso_utc(m.kickoff_utc),
-                "match_points": mp,
-                "cumulative": cum.get(username, 0),
-                "rank": rank,
-                "players": len(cum),
-                "played": target_pred is not None,
-                "points_behind_leader": points_behind_leader,
-            }
-        )
+        snapshots.append(dict(cum))
+        match_meta.append({
+            "match_id": m.id,
+            "home_team": m.home_team,
+            "away_team": m.away_team,
+            "score": f"{m.home_score}-{m.away_score}",
+            "kickoff_utc": _iso_utc(m.kickoff_utc),
+            "match_points": mp,
+            "played": target_pred is not None,
+        })
+
+    # Today's leader (highest final cumulative, alphabetical tie-break) — we then
+    # trace THIS person's own rank/points back through every checkpoint, so the
+    # comparison shows how they actually climbed (not just a synthetic "best so far").
+    leader_username = (
+        sorted(cum.items(), key=lambda kv: (-kv[1], kv[0]))[0][0] if cum else None
+    )
+
+    def rank_of(snap: dict[str, int], who: str | None) -> int | None:
+        if who is None or who not in snap:
+            return None
+        order = sorted(snap.items(), key=lambda kv: (-kv[1], kv[0]))
+        ranks = assign_ranks([v for _, v in order])
+        return ranks[[u for u, _ in order].index(who)]
+
+    points = []
+    for meta, snap in zip(match_meta, snapshots):
+        rank = rank_of(snap, username)
+        leader_points = max(snap.values()) if snap else None  # contemporaneous best, for the "Puntos" gap
+        points_behind_leader = (leader_points - snap[username]) if rank is not None else None
+        points.append({
+            **meta,
+            "cumulative": snap.get(username, 0),
+            "leader_points": leader_points,
+            "leader_rank": rank_of(snap, leader_username),
+            "leader_cumulative": snap.get(leader_username) if leader_username else None,
+            "rank": rank,
+            "players": len(snap),
+            "points_behind_leader": points_behind_leader,
+        })
 
     return {"identified": True, "username": username, "points": points}
 

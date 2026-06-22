@@ -1,7 +1,9 @@
 /* Tiny dependency-free SVG line chart. Responsive, "nice" scale, supports an
-   inverted axis (for ranking: #1 at the top) and per-point value labels.
-     lineChart(container, [{label, value, tooltip}], {
-       invert, domainMin, domainMax, ticks, pointLabels, format, emptyText });
+   inverted axis (for ranking: #1 at the top) and labels on marked peaks only
+   (every point still carries a hover tooltip via <title>).
+     lineChart(container, [{label, value, tooltip}], opts)                 // single series
+     lineChart(container, [{name, color, points: [...]}, ...], opts)        // multi series (overlay, e.g. tú vs líder)
+     opts: { invert, domainMin, domainMax, ticks, pointLabels, format, emptyText }
 */
 (function () {
   const NS = "http://www.w3.org/2000/svg";
@@ -28,15 +30,39 @@
 
   function el(name, attrs, text) {
     const e = document.createElementNS(NS, name);
-    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    for (const k in attrs) if (attrs[k] != null) e.setAttribute(k, attrs[k]);
     if (text != null) e.textContent = text;
     return e;
   }
 
-  window.lineChart = function (container, data, opts) {
+  // Indices worth labeling: the endpoints, plus local max/min turns whose swing
+  // is at least ~12% of the series range — keeps dense series readable instead
+  // of stamping a number on every single point.
+  function peakIndices(points) {
+    const n = points.length;
+    if (n <= 2) return points.map((_, i) => i);
+    const vals = points.map(p => p.value);
+    const range = Math.max(...vals) - Math.min(...vals) || 1;
+    const thresh = range * 0.12;
+    const idx = new Set([0, n - 1]);
+    for (let i = 1; i < n - 1; i++) {
+      const prev = vals[i - 1], cur = vals[i], next = vals[i + 1];
+      const isMax = cur >= prev && cur >= next && (cur - Math.min(prev, next) >= thresh);
+      const isMin = cur <= prev && cur <= next && (Math.max(prev, next) - cur >= thresh);
+      if (isMax || isMin) idx.add(i);
+    }
+    return [...idx].sort((a, b) => a - b);
+  }
+
+  window.lineChart = function (container, seriesInput, opts) {
     opts = opts || {};
     container.innerHTML = "";
-    if (!data || !data.length) {
+
+    const isMulti = Array.isArray(seriesInput) && seriesInput.length > 0 && Array.isArray(seriesInput[0].points);
+    const series = (isMulti ? seriesInput : [{ points: seriesInput || [], color: "#f59e0b", dot: "#10b981", primary: true }])
+      .filter(s => s.points && s.points.length);
+
+    if (!series.length) {
       const d = document.createElement("div");
       d.className = "empty";
       d.textContent = opts.emptyText || "Sin datos todavía.";
@@ -44,13 +70,14 @@
       return;
     }
 
+    const data = series[0].points;
     const innerW = W - PAD.l - PAD.r;
     const innerH = H - PAD.t - PAD.b;
     const n = data.length;
     const invert = !!opts.invert;
     const fmt = opts.format || (v => v);
 
-    const maxVal = Math.max(...data.map(p => p.value));
+    const maxVal = Math.max(...series.flatMap(s => s.points.map(p => p.value)));
     const base = niceScale(maxVal);
     let dmin = opts.domainMin != null ? opts.domainMin : 0;
     let dmax = opts.domainMax != null ? opts.domainMax : base.max;
@@ -79,38 +106,73 @@
       }
     });
 
-    // Area fill only for the upward (points) mode.
-    if (n > 1 && !invert) {
-      let d = `M ${x(0)} ${y(data[0].value)}`;
-      data.forEach((p, i) => { d += ` L ${x(i)} ${y(p.value)}`; });
-      d += ` L ${x(n - 1)} ${y(dmin)} L ${x(0)} ${y(dmin)} Z`;
+    // Shaded area: between the two series when there's a comparison (e.g. tú
+    // vs líder) — drawn first, underneath both lines — or from the lone
+    // series down to the baseline, in upward (points) mode.
+    if (series.length >= 2) {
+      const a = series[0].points, b = series[1].points;
+      const len = Math.min(a.length, b.length);
+      if (len > 1) {
+        let d = `M ${x(0)} ${y(a[0].value)}`;
+        for (let i = 1; i < len; i++) d += ` L ${x(i)} ${y(a[i].value)}`;
+        for (let i = len - 1; i >= 0; i--) d += ` L ${x(i)} ${y(b[i].value)}`;
+        d += " Z";
+        svg.appendChild(el("path", { d, fill: "rgba(245,158,11,.14)", stroke: "none" }));
+      }
+    } else if (series[0].points.length > 1 && !invert) {
+      const pts = series[0].points;
+      let d = `M ${x(0)} ${y(pts[0].value)}`;
+      pts.forEach((p, i) => { d += ` L ${x(i)} ${y(p.value)}`; });
+      d += ` L ${x(pts.length - 1)} ${y(dmin)} L ${x(0)} ${y(dmin)} Z`;
       svg.appendChild(el("path", { d, fill: "rgba(245,158,11,.12)", stroke: "none" }));
     }
-    if (n > 1) {
-      let dl = `M ${x(0)} ${y(data[0].value)}`;
-      data.forEach((p, i) => { if (i) dl += ` L ${x(i)} ${y(p.value)}`; });
-      svg.appendChild(el("path", { d: dl, fill: "none", stroke: "#f59e0b", "stroke-width": 2.5,
-        "stroke-linejoin": "round", "stroke-linecap": "round" }));
-    }
 
-    data.forEach((p, i) => {
-      const last = i === n - 1;
-      const g = el("g", {});
-      g.appendChild(el("circle", { cx: x(i), cy: y(p.value), r: last ? 5 : 3.5,
-        fill: last ? "#f59e0b" : "#10b981", stroke: "#0b1326", "stroke-width": 1.5 }));
-      g.appendChild(el("title", {}, p.tooltip || `${p.label}: ${fmt(p.value)}`));
-      svg.appendChild(g);
+    series.forEach((s, si) => {
+      const pts = s.points;
+      const primary = si === 0;
+      const lineColor = s.color || (primary ? "#f59e0b" : "#4edea3");
+      const dotColor = s.dot || lineColor;
 
-      if (opts.pointLabels) {
-        // Above the point, but flip below if too close to the top edge.
-        const above = y(p.value) - 9 > PAD.t + 6;
-        svg.appendChild(el("text", {
-          x: x(i), y: y(p.value) + (above ? -9 : 15), "text-anchor": "middle",
-          fill: "#dae2fd", "font-size": 11, "font-weight": 700,
-        }, fmt(p.value)));
+      if (pts.length > 1) {
+        let dl = `M ${x(0)} ${y(pts[0].value)}`;
+        pts.forEach((p, i) => { if (i) dl += ` L ${x(i)} ${y(p.value)}`; });
+        svg.appendChild(el("path", { d: dl, fill: "none", stroke: lineColor, "stroke-width": primary ? 2.5 : 2,
+          "stroke-dasharray": s.dashed ? "5 4" : null, "stroke-linejoin": "round", "stroke-linecap": "round" }));
       }
+
+      const labeled = opts.pointLabels ? new Set(peakIndices(pts)) : new Set();
+      pts.forEach((p, i) => {
+        const last = i === pts.length - 1;
+        const g = el("g", {});
+        g.appendChild(el("circle", { cx: x(i), cy: y(p.value), r: last ? 5 : (primary ? 3.5 : 2.8),
+          fill: last ? lineColor : dotColor, stroke: "#0b1326", "stroke-width": 1.5 }));
+        g.appendChild(el("title", {}, p.tooltip || `${p.label}: ${fmt(p.value)}`));
+        svg.appendChild(g);
+
+        if (labeled.has(i)) {
+          // Above the point, but flip below if too close to the top edge. The
+          // secondary series sits further out so its labels don't collide with
+          // the primary series' labels when both peak near the same x.
+          const off = primary ? 9 : 17;
+          const above = y(p.value) - off > PAD.t + 6;
+          svg.appendChild(el("text", {
+            x: x(i), y: y(p.value) + (above ? -off : off + 6), "text-anchor": "middle",
+            fill: primary ? "#dae2fd" : lineColor, "font-size": 9, "font-weight": 700,
+          }, fmt(p.value)));
+        }
+      });
     });
 
     container.appendChild(svg);
+
+    if (isMulti && series.length > 1) {
+      const legend = document.createElement("div");
+      legend.style.cssText = "display:flex; gap:1rem; justify-content:center; margin-top:.3rem; font-size:.78rem;";
+      legend.innerHTML = series.map(s =>
+        `<span style="display:inline-flex; align-items:center; gap:.35rem; color:#9aa8c9">
+           <span style="width:.6rem; height:.6rem; border-radius:50%; background:${s.color || (s.primary ? "#f59e0b" : "#4edea3")}; display:inline-block"></span>${s.name || ""}</span>`
+      ).join("");
+      container.appendChild(legend);
+    }
   };
 })();

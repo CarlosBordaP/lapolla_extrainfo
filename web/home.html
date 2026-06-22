@@ -11,30 +11,12 @@
 <body>
   <main id="main"><div class="empty">Cargando…</div></main>
 
+<script src="/web/teams.js"></script>
 <script>
 const fmtDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"medium", timeStyle:"short" }) + " (Bogotá)";
 const fmtShortDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"short", timeStyle:"short" });
 const fmtTime = iso => new Date(iso).toLocaleTimeString("es-CO", { timeZone:"America/Bogota" });
 const short = t => t.slice(0, 3).toUpperCase();
-
-// Team name → ISO 3166-1 code (flagcdn.com), covering the 48 World Cup 2026 teams.
-const COUNTRY_CODE = {
-  "Alemania":"de", "Arabia Saudita":"sa", "Argelia":"dz", "Argentina":"ar", "Australia":"au",
-  "Austria":"at", "Bosnia y Herzegovina":"ba", "Brasil":"br", "Bélgica":"be", "Cabo Verde":"cv",
-  "Canadá":"ca", "Catar":"qa", "Colombia":"co", "Corea del Sur":"kr", "Costa de Marfil":"ci",
-  "Croacia":"hr", "Curazao":"cw", "Ecuador":"ec", "Egipto":"eg", "Escocia":"gb-sct",
-  "España":"es", "Estados Unidos":"us", "Francia":"fr", "Ghana":"gh", "Haití":"ht",
-  "Inglaterra":"gb-eng", "Irak":"iq", "Irán":"ir", "Japón":"jp", "Jordania":"jo",
-  "Marruecos":"ma", "México":"mx", "Noruega":"no", "Nueva Zelanda":"nz", "Panamá":"pa",
-  "Paraguay":"py", "Países Bajos":"nl", "Portugal":"pt", "RD Congo":"cd", "República Checa":"cz",
-  "Senegal":"sn", "Sudáfrica":"za", "Suecia":"se", "Suiza":"ch", "Turquía":"tr",
-  "Túnez":"tn", "Uruguay":"uy", "Uzbekistán":"uz",
-};
-function flag(team) {
-  const cc = COUNTRY_CODE[team];
-  if (!cc) return `<span class="flag-circle"></span>`;
-  return `<span class="flag-circle"><img src="https://flagcdn.com/h80/${cc}.png" alt="${team}" loading="lazy"></span>`;
-}
 
 function spotlightCard(s) {
   if (!s) return `<div class="card"><div class="card-head"><span class="k-label">Próximo partido</span></div>
@@ -151,6 +133,13 @@ function positionCard(me) {
     label: lbl(p), value: p.cumulative,
     tooltip: `${p.home_team} ${p.score} ${p.away_team} · ${p.played ? "+" + p.match_points : "sin pronóstico"} (total ${p.cumulative})`,
   }));
+  // The leader overlay always tracks the SAME fixed identity (today's #1)
+  // through every checkpoint, in both points and rank, so the two chart modes
+  // tell one consistent story instead of mixing in a synthetic "best so far".
+  const leaderPointsSeries = pts.filter(p => p.leader_cumulative != null).map(p => ({
+    label: lbl(p), value: p.leader_cumulative,
+    tooltip: `${p.home_team} ${p.score} ${p.away_team} · líder con ${p.leader_cumulative} pts`,
+  }));
   const rankPts = pts.filter(p => p.rank != null);
   const playersMax = Math.max(1, ...rankPts.map(p => p.players));
   const rankSeries = rankPts.map(p => ({
@@ -165,16 +154,10 @@ function positionCard(me) {
     return a;
   };
   const rankTicks = intTicks(1, playersMax);
-
-  const leaderPts = pts.filter(p => p.points_behind_leader != null);
-  const leaderGapMax = Math.max(1, ...leaderPts.map(p => p.points_behind_leader));
-  const leaderSeries = leaderPts.map(p => ({
-    label: lbl(p), value: p.points_behind_leader,
-    tooltip: p.points_behind_leader === 0
-      ? `${p.home_team} ${p.score} ${p.away_team} · ¡eras el líder!`
-      : `${p.home_team} ${p.score} ${p.away_team} · a ${p.points_behind_leader} pts del líder`,
+  const leaderRankSeries = pts.filter(p => p.leader_rank != null).map(p => ({
+    label: lbl(p), value: p.leader_rank,
+    tooltip: `${p.home_team} ${p.score} ${p.away_team} · líder en el puesto #${p.leader_rank}`,
   }));
-  const leaderTicks = intTicks(0, leaderGapMax);
 
   const evo = document.getElementById("evo");
   function render(mode) {
@@ -187,13 +170,21 @@ function positionCard(me) {
         emptyText: "Tu puesto aparecerá cuando se jueguen partidos.",
       });
     } else if (mode === "leader") {
-      lineChart(evo, leaderSeries, {
-        invert: true, domainMin: 0, domainMax: leaderGapMax, ticks: leaderTicks,
-        pointLabels: true,
-        emptyText: "Tu distancia al líder aparecerá cuando se jueguen partidos.",
+      const tuRank = { name: "Tú", points: rankSeries, color: "#f59e0b", dot: "#10b981", primary: true };
+      const series = leaderRankSeries.length
+        ? [tuRank, { name: "Líder", points: leaderRankSeries, color: "#4edea3", dashed: true }]
+        : [tuRank];
+      lineChart(evo, series, {
+        invert: true, domainMin: 1, domainMax: playersMax, ticks: rankTicks,
+        pointLabels: true, format: v => "#" + v,
+        emptyText: "Tu puesto aparecerá cuando se jueguen partidos.",
       });
     } else {
-      lineChart(evo, pointsSeries, {
+      const tuSeries = { name: "Tú", points: pointsSeries, color: "#f59e0b", dot: "#10b981", primary: true };
+      const series = leaderPointsSeries.length
+        ? [tuSeries, { name: "Líder", points: leaderPointsSeries, color: "#4edea3", dashed: true }]
+        : [tuSeries];
+      lineChart(evo, series, {
         pointLabels: true,
         emptyText: "Tu evolución aparecerá cuando se jueguen partidos.",
       });

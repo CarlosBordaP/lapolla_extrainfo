@@ -8,11 +8,45 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
   <style>
-    .tabs { display:flex; gap:.4rem; margin:.6rem 0 1rem; flex-wrap:wrap; }
-    .tabs button { background:var(--panel); color:var(--muted); border:1px solid var(--line);
-      border-radius:9px; padding:.45rem .8rem; cursor:pointer; font-size:.9rem; }
+    .tabs { display:flex; gap:.5rem; margin:.6rem 0 1.6rem; flex-wrap:wrap; }
+    .tabs button { display:flex; align-items:center; gap:.4rem; background:var(--panel-elevated); color:var(--text);
+      border:1px solid var(--line); border-radius:10px; padding:.5rem .9rem; cursor:pointer; font-size:.88rem; font-weight:600; }
     .tabs button.active { background:var(--green); color:#fff; border-color:var(--green); }
-    .tabs .n { opacity:.7; font-size:.78rem; }
+    .tabs .n { opacity:.75; font-size:.8rem; font-weight:600; }
+
+    .section-title { display:flex; justify-content:space-between; align-items:baseline; margin:0 0 .9rem; }
+    .section-title .st-label { color:var(--accent); font-weight:700; font-size:1.05rem; display:flex; align-items:center; gap:.4rem; }
+    .section-title .st-date { color:var(--muted); font-size:.82rem; font-weight:600; }
+
+    .day-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:1rem; margin-bottom:2rem; }
+    .day-grid.cols-1 { grid-template-columns:minmax(280px,480px); }
+    .day-grid.cols-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .day-grid.cols-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+    .day-grid.cols-4 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    @media (max-width:720px) {
+      .day-grid.cols-2, .day-grid.cols-3, .day-grid.cols-4 { grid-template-columns:1fr; }
+    }
+    .day-card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:1.1rem 1.2rem;
+      display:flex; flex-direction:column; gap:.9rem; }
+    .day-card .top-row { display:flex; justify-content:space-between; align-items:center; min-height:1.3rem; }
+    .day-card .score-row { display:flex; align-items:center; justify-content:center; gap:1.5rem; }
+    .day-card .center-col { display:flex; flex-direction:column; align-items:center; gap:.15rem; min-width:3.6rem; }
+    .day-card .center-col .score { font-size:1.7rem; font-weight:800; color:var(--accent); line-height:1; }
+    .day-card .center-col .vs { font-size:1rem; font-weight:700; color:var(--muted); }
+    .day-card .center-col .sub { font-size:.7rem; color:var(--muted); }
+    .day-card .bottom-row { display:flex; justify-content:flex-end; }
+    .day-card a.team-col, .day-card a.team-col:hover { text-decoration:none; }
+
+    .accordion { display:flex; flex-direction:column; gap:.55rem; }
+    .acc-item { background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+    .acc-head { display:flex; align-items:center; gap:.7rem; padding:.85rem 1.1rem; cursor:pointer; user-select:none; }
+    .acc-head .bar { width:4px; height:1.1rem; border-radius:2px; background:var(--accent); flex-shrink:0; }
+    .acc-head .label { font-weight:700; flex:1; }
+    .acc-head .n { color:var(--muted); font-size:.82rem; font-weight:600; }
+    .acc-head .chev { color:var(--muted); transition:transform .2s; }
+    .acc-item.open .acc-head .chev { transform:rotate(180deg); }
+    .acc-body { display:none; padding:.2rem .9rem .8rem; }
+    .acc-item.open .acc-body { display:block; }
   </style>
 </head>
 <body>
@@ -22,27 +56,64 @@
     <div id="content"><div class="empty">Cargando…</div></div>
   </main>
 
+<script src="/web/teams.js"></script>
 <script>
 const fmtDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"medium", timeStyle:"short" });
 const fmtTime = iso => new Date(iso).toLocaleTimeString("es-CO", { timeZone:"America/Bogota" });
+const fmtTimeOnly = iso => new Date(iso).toLocaleTimeString("es-CO", { timeZone:"America/Bogota", hour:"numeric", minute:"2-digit" });
+const dayKey = iso => new Date(iso).toLocaleDateString("en-CA", { timeZone:"America/Bogota" }); // YYYY-MM-DD, for grouping
+const monthAbbr = iso => new Date(iso).toLocaleDateString("es-CO", { timeZone:"America/Bogota", month:"short" }).toUpperCase().replace(".", "");
 
-function uploadAction(m) {
+function bigDateLabel(iso) {
+  const d = new Date(iso);
+  const day = d.toLocaleDateString("es-CO", { timeZone:"America/Bogota", day:"numeric" });
+  const year = d.toLocaleDateString("es-CO", { timeZone:"America/Bogota", year:"numeric" });
+  return `${day} ${monthAbbr(iso)} ${year}`;
+}
+
+function dayLabel(iso) {
+  const key = dayKey(iso);
+  const todayKey = dayKey(new Date().toISOString());
+  const tomorrowKey = dayKey(new Date(Date.now() + 86400000).toISOString());
+  const day = new Date(iso).toLocaleDateString("es-CO", { timeZone:"America/Bogota", day:"numeric" });
+  if (key === todayKey) return `Hoy, ${day} ${monthAbbr(iso)}`;
+  if (key === tomorrowKey) return `Mañana, ${day} ${monthAbbr(iso)}`;
+  const weekday = new Date(iso).toLocaleDateString("es-CO", { timeZone:"America/Bogota", weekday:"long" });
+  return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)}, ${day} ${monthAbbr(iso)}`;
+}
+
+// Splits a (pre-sorted) match list into "the nearest matchday" + the remaining
+// matches grouped by day, in the same order the list came in.
+function splitDayAndRest(list) {
+  if (!list.length) return { dayMatches: [], dayIso: null, restGroups: [] };
+  const targetKey = dayKey(list[0].kickoff_utc);
+  const dayMatches = list.filter(m => dayKey(m.kickoff_utc) === targetKey);
+  const rest = list.filter(m => dayKey(m.kickoff_utc) !== targetKey);
+  const order = [...new Set(rest.map(m => dayKey(m.kickoff_utc)))];
+  const restGroups = order.map(key => ({ key, matches: rest.filter(m => dayKey(m.kickoff_utc) === key) }));
+  return { dayMatches, dayIso: list[0].kickoff_utc, restGroups };
+}
+
+function uploadAction(m, isAdmin) {
   switch (m.upload_state) {
     case "locked":
-      return `<a href="/match?id=${m.id}" title="Predicciones ya procesadas">🔒</a>`;
+      return `<a class="icon-btn sm accent" href="/match?id=${m.id}" title="Predicciones ya procesadas">🔒</a>`;
     case "open":
-      return `<a class="btn" href="/upload?match=${m.id}">📤 Subir predicción</a>`;
+      return `<a class="icon-btn sm fill" href="/upload?match=${m.id}" title="Subir predicción">📤</a>`;
     case "early":
-      return `<span class="muted" style="font-size:.78rem"
-        title="Se habilita 10 min antes (${fmtDate(m.upload_open_at)})">📤 10 min antes</span>`;
+      return isAdmin
+        ? `<a class="icon-btn sm warn" href="/upload?match=${m.id}" title="Forzar apertura (admin)">🔓</a>`
+        : `<span class="icon-btn sm" title="Se habilita 10 min antes (${fmtDate(m.upload_open_at)})">⏳</span>`;
     case "closed":
-      return `<span class="muted" style="font-size:.78rem" title="La ventana cerró al terminar el partido">⛔ cerrado</span>`;
+      return isAdmin
+        ? `<a class="icon-btn sm warn" href="/upload?match=${m.id}" title="Forzar apertura y subir manualmente (admin)">🔓</a>`
+        : `<span class="icon-btn sm" title="La ventana cerró al terminar el partido">⛔</span>`;
     default:
       return "";
   }
 }
 
-function item(m) {
+function item(m, isAdmin) {
   const live = m.status === "live";
   const finished = m.status === "finished";
   const score = (m.home_score ?? "–") + " : " + (m.away_score ?? "–");
@@ -52,23 +123,116 @@ function item(m) {
     ? `<b>${score}</b> <span class="badge ${m.status}">${live ? "EN VIVO" : "Final"}</span>${readAt}`
     : `<span class="muted">${fmtDate(m.kickoff_utc)}</span>`;
   return `<div class="matchlink">
-    <a href="/match?id=${m.id}" style="flex:1">${live ? '<span class="dot"></span>' : ""}${m.home_team}
-      <span class="muted">vs</span> ${m.away_team}
-      <span class="badge">${m.stage === "knockout" ? "Eliminatoria" : "Grupos"}</span></a>
+    <a href="/match?id=${m.id}" style="flex:1">${live ? '<span class="dot"></span>' : ""}${flag(m.home_team, "xs")}${m.home_team}
+      <span class="muted">vs</span> ${flag(m.away_team, "xs")}${m.away_team}</a>
     <span style="display:flex; gap:.7rem; align-items:center">${right}
-      <span style="font-size:1.15rem">${uploadAction(m)}</span></span>
+      ${uploadAction(m, isAdmin)}</span>
   </div>`;
 }
 
+function statusPill(m) {
+  if (m.status === "live") return `<span class="badge live"><span class="dot"></span>EN VIVO</span>`;
+  if (m.status === "finished") return `<span class="muted" style="font-size:.78rem">Final</span>`;
+  return `<span class="muted" style="font-size:.78rem">${fmtTimeOnly(m.kickoff_utc)}</span>`;
+}
+
+function centerBlock(m) {
+  const scored = m.home_score != null && m.away_score != null;
+  if (!scored) return `<span class="vs">VS</span>`;
+  const sub = m.status === "live" && m.score_updated_at
+    ? `<span class="sub">🔴 leído ${fmtTime(m.score_updated_at)}</span>`
+    : (m.status === "finished" ? `<span class="sub">Final</span>` : "");
+  return `<span class="score">${m.home_score} : ${m.away_score}</span>${sub}`;
+}
+
+function cardAction(m, isAdmin) {
+  switch (m.upload_state) {
+    case "open":
+      return `<a class="icon-btn fill" href="/upload?match=${m.id}" title="Predecir ahora">📤</a>`;
+    case "early":
+      return isAdmin
+        ? `<a class="icon-btn warn" href="/upload?match=${m.id}" title="Forzar apertura (admin)">🔓</a>`
+        : `<span class="icon-btn" title="Se habilita 10 min antes (${fmtDate(m.upload_open_at)})">⏳</span>`;
+    case "closed":
+      return isAdmin
+        ? `<a class="icon-btn warn" href="/upload?match=${m.id}" title="Forzar apertura y subir manualmente (admin)">🔓</a>`
+        : `<span class="icon-btn" title="La ventana cerró al terminar el partido">⛔</span>`;
+    case "locked":
+      return `<a class="icon-btn accent" href="/match?id=${m.id}" title="Ver predicciones">🔒</a>`;
+    default:
+      return "";
+  }
+}
+
+function gridColsClass(n) {
+  return n === 1 ? "cols-1" : n === 2 ? "cols-2" : n === 3 ? "cols-3" : n === 4 ? "cols-4" : "";
+}
+
+function dayCard(m, isAdmin) {
+  return `<div class="day-card">
+    <div class="top-row">
+      <span class="badge">${m.stage === "knockout" ? "Eliminatoria" : "Grupos"}</span>
+      ${statusPill(m)}
+    </div>
+    <div class="score-row">
+      <a class="team-col" href="/match?id=${m.id}">${flag(m.home_team)}<span class="team">${m.home_team}</span></a>
+      <div class="center-col">${centerBlock(m)}</div>
+      <a class="team-col" href="/match?id=${m.id}">${flag(m.away_team)}<span class="team">${m.away_team}</span></a>
+    </div>
+    <div class="bottom-row">${cardAction(m, isAdmin)}</div>
+  </div>`;
+}
+
+function accordionGroup(group, isAdmin) {
+  return `<div class="acc-item">
+    <div class="acc-head">
+      <span class="bar"></span>
+      <span class="label">${dayLabel(group.matches[0].kickoff_utc)}</span>
+      <span class="n">${group.matches.length}</span>
+      <span class="chev">⌄</span>
+    </div>
+    <div class="acc-body">${group.matches.map(m => item(m, isAdmin)).join("")}</div>
+  </div>`;
+}
+
+const REST_TITLE = { upcoming: "Próximas Fechas", played: "Fechas Anteriores" };
+
+function renderTab(kind, list, isAdmin) {
+  if (kind === "live") {
+    // Just the live match card(s) — no "Partidos del Día" title, no date grouping.
+    return `<div class="day-grid ${gridColsClass(list.length)}">${list.map(m => dayCard(m, isAdmin)).join("")}</div>`;
+  }
+  const { dayMatches, dayIso, restGroups } = splitDayAndRest(list);
+  let html = "";
+  if (dayMatches.length) {
+    if (kind === "upcoming") {
+      html += `<div class="section-title">
+        <span class="st-label">★ Partidos del Día</span>
+        <span class="st-date">${bigDateLabel(dayIso)}</span>
+      </div>`;
+    }
+    html += `<div class="day-grid ${gridColsClass(dayMatches.length)}">${dayMatches.map(m => dayCard(m, isAdmin)).join("")}</div>`;
+  }
+  if (restGroups.length) {
+    html += `<h2>${REST_TITLE[kind]}</h2>
+    <div class="accordion">${restGroups.map(g => accordionGroup(g, isAdmin)).join("")}</div>`;
+  }
+  return html || '<div class="empty">No hay partidos en esta categoría.</div>';
+}
+
 (async () => {
-  const matches = await fetch("/matches").then(r => r.json());
+  const [matches, me] = await Promise.all([
+    fetch("/matches").then(r => r.json()),
+    fetch("/me").then(r => r.json()),
+  ]);
+  const isAdmin = me.is_admin;
   const groups = {
     live: matches.filter(m => m.status === "live"),
     upcoming: matches.filter(m => m.status === "scheduled"),
     played: matches.filter(m => m.status === "finished").reverse(),
   };
   const defs = [
-    ["live", "🔴 En vivo", groups.live],
+    ["live", "En vivo", groups.live],
     ["upcoming", "Próximos", groups.upcoming],
     ["played", "Jugados", groups.played],
   ].filter(([, , list]) => list.length);  // hide empty tabs
@@ -82,11 +246,13 @@ function item(m) {
 
   function render() {
     document.getElementById("tabs").innerHTML = defs.map(([k, label, list]) =>
-      `<button data-k="${k}" class="${k === current ? "active" : ""}">${label} <span class="n">${list.length}</span></button>`).join("");
+      `<button data-k="${k}" class="${k === current ? "active" : ""}">${k === "live" ? '<span class="dot"></span>' : ""}${label} <span class="n">${list.length}</span></button>`).join("");
     document.querySelectorAll(".tabs button").forEach(b =>
       b.onclick = () => { current = b.dataset.k; render(); });
     const list = defs.find(([k]) => k === current)[2];
-    document.getElementById("content").innerHTML = list.map(item).join("");
+    document.getElementById("content").innerHTML = renderTab(current, list, isAdmin);
+    document.querySelectorAll(".acc-head").forEach(h =>
+      h.onclick = () => h.closest(".acc-item").classList.toggle("open"));
   }
   render();
 })();
