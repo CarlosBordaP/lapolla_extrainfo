@@ -835,29 +835,25 @@ def me_history(request: Request, session: Session = Depends(get_session)) -> dic
         })
 
     # Today's leader (highest final cumulative, alphabetical tie-break) — we then
-    # trace THIS person's own rank/points back through every checkpoint, so the
-    # comparison shows how they actually climbed (not just a synthetic "best so far").
+    # trace THIS person's own points back through every checkpoint, so the
+    # "Puntos" overlay shows how they actually climbed (not a synthetic "best so far").
     leader_username = (
         sorted(cum.items(), key=lambda kv: (-kv[1], kv[0]))[0][0] if cum else None
     )
 
-    def rank_of(snap: dict[str, int], who: str | None) -> int | None:
-        if who is None or who not in snap:
-            return None
-        order = sorted(snap.items(), key=lambda kv: (-kv[1], kv[0]))
-        ranks = assign_ranks([v for _, v in order])
-        return ranks[[u for u, _ in order].index(who)]
-
     points = []
     for meta, snap in zip(match_meta, snapshots):
-        rank = rank_of(snap, username)
-        leader_points = max(snap.values()) if snap else None  # contemporaneous best, for the "Puntos" gap
+        rank = None
+        if username in snap:
+            order = sorted(snap.items(), key=lambda kv: (-kv[1], kv[0]))
+            ranks = assign_ranks([v for _, v in order])
+            rank = ranks[[u for u, _ in order].index(username)]
+        leader_points = max(snap.values()) if snap else None  # contemporaneous best — the "a N pts del líder" gap
         points_behind_leader = (leader_points - snap[username]) if rank is not None else None
         points.append({
             **meta,
             "cumulative": snap.get(username, 0),
             "leader_points": leader_points,
-            "leader_rank": rank_of(snap, leader_username),
             "leader_cumulative": snap.get(leader_username) if leader_username else None,
             "rank": rank,
             "players": len(snap),

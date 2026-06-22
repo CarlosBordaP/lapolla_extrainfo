@@ -7,14 +7,66 @@
   <link rel="stylesheet" href="/web/app.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* Two columns, top-aligned. The right column never grows past the left
+       column's height (a 50+ row roster is much taller than one screenshot),
+       and stays in view via position:sticky while you scroll the table —
+       avoids a huge empty gap around a small, centered image. */
+    .match-body { display:grid; grid-template-columns:1.4fr 1fr; gap:1.2rem; align-items:start; margin-top:1rem; }
+    .match-col-left { min-width:0; }
+    .match-col-right { min-width:0; position:sticky; top:4.5rem; }
+    .match-col-right .shot-label { font-size:.72rem; color:var(--muted); text-transform:uppercase;
+      letter-spacing:.05em; font-weight:600; margin-bottom:.6rem; }
+    .shot-frame { position:relative; cursor:zoom-in; }
+    .shot-frame img { display:block; width:100%; max-height:min(65vh,560px);
+      object-fit:contain; border-radius:8px; border:1px solid var(--line); }
+    .shot-frame .zoom-hint { position:absolute; bottom:.5rem; right:.5rem; background:rgba(11,19,38,.78);
+      border:1px solid var(--line); border-radius:50%; width:1.9rem; height:1.9rem; display:flex;
+      align-items:center; justify-content:center; font-size:.9rem; pointer-events:none; }
+    @media (max-width:860px) {
+      .match-body { grid-template-columns:1fr; }
+      .match-col-right { position:static; }
+      .shot-frame img { max-height:60vh; }
+    }
+
+    /* Lightbox: click to open at "fit" size, click the image again to view it
+       at native resolution inside a scrollable backdrop — needed because the
+       sticky thumbnail can be too small to read a dense screenshot. */
+    .lightbox-overlay { position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:2000;
+      display:flex; align-items:center; justify-content:center; overflow:auto; cursor:zoom-out; padding:2rem; }
+    .lightbox-img.fit { max-width:92vw; max-height:92vh; object-fit:contain; margin:auto; cursor:zoom-in; }
+    .lightbox-img:not(.fit) { display:block; max-width:none; cursor:zoom-out; margin:auto; }
+    .lightbox-close { position:fixed; top:1rem; right:1.2rem; background:var(--panel); border:1px solid var(--line);
+      color:var(--text); border-radius:50%; width:2.4rem; height:2.4rem; font-size:1.1rem; cursor:pointer; z-index:2001; }
+
+    /* Predictions table: highlight "me", show top N + your row if you're
+       outside it, with a toggle to expand — same pattern as /board. Only the
+       row's outer edge is drawn (top/bottom shadow on every cell, left/right
+       only on the end cells) so it reads as one rounded outline, not a grid
+       of individually-boxed cells. */
+    tr.me-row td { background:#20251a; box-shadow: inset 0 1px 0 0 var(--gold), inset 0 -1px 0 0 var(--gold); }
+    tr.me-row td:first-child {
+      box-shadow: inset 1px 0 0 0 var(--gold), inset 0 1px 0 0 var(--gold), inset 0 -1px 0 0 var(--gold);
+      border-radius: 8px 0 0 8px;
+    }
+    tr.me-row td:last-child {
+      box-shadow: inset -1px 0 0 0 var(--gold), inset 0 1px 0 0 var(--gold), inset 0 -1px 0 0 var(--gold);
+      border-radius: 0 8px 8px 0;
+    }
+    .me-tag { color:var(--gold); font-size:.78rem; font-weight:700; }
+    .rank-cell { color:var(--muted); font-variant-numeric:tabular-nums; font-weight:700; width:2.2rem; }
+    tr.divider-row td { text-align:center; color:var(--muted); letter-spacing:.3em; padding:.3rem 0; }
+  </style>
 </head>
 <body>
   <main id="main"><div class="empty">Cargando…</div></main>
 
+<script src="/web/teams.js"></script>
 <script>
 const fmtDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America/Bogota", dateStyle:"full", timeStyle:"short" }) + " (Bogotá)";
 const params = new URLSearchParams(location.search);
 const id = params.get("id");
+const TOP_N = 10;
 
 function header(m) {
   const live = m.status === "live", finished = m.status === "finished";
@@ -22,41 +74,67 @@ function header(m) {
   const state = live ? '<span class="badge live">EN VIVO</span>'
     : finished ? '<span class="badge finished">Final</span>'
     : '<span class="badge scheduled">Programado</span>';
-  return `<h1>${m.home_team} <span class="muted">vs</span> ${m.away_team}</h1>
-    <div class="card ${live ? "gold" : ""}">
-      <div class="v" style="font-size:2.2rem">${(finished||live) ? score : "–"}</div>
-      <div class="s">${state} · ${m.stage === "knockout" ? "Eliminatoria" : "Fase de grupos"} · ${fmtDate(m.kickoff_utc)}</div>
+  return `<div class="card ${live ? "gold" : ""}">
+      <div class="match-row">
+        <div class="team-col">${flag(m.home_team)}<span class="team">${m.home_team}</span></div>
+        <span class="v" style="font-size:2rem">${(finished || live) ? score : "vs"}</span>
+        <div class="team-col">${flag(m.away_team)}<span class="team">${m.away_team}</span></div>
+      </div>
+      <div class="s" style="text-align:center;margin-top:.5rem">${state} · ${m.stage === "knockout" ? "Eliminatoria" : "Fase de grupos"} · ${fmtDate(m.kickoff_utc)}</div>
     </div>`;
 }
 
-function predictionsTable(preds, scored, predCount, partCount, isAdmin, showCumulative) {
+function predRowHtml(p, idx, scored, isAdmin, showCumulative, meUsername) {
+  const isMe = meUsername && p.username === meUsername;
+  const rankCell = scored ? `<td class="rank-cell">#${idx + 1}</td>` : '';
+  const editBtn = isAdmin
+    ? `<button class="icon-btn sm editPredBtn" title="Editar" data-username="${p.username}" data-home="${p.pred_home ?? ""}" data-away="${p.pred_away ?? ""}">✎</button>`
+    : '';
+  const cumCell = showCumulative ? `<td>${p.cumulative ?? "–"}</td>` : '';
+  const nameCell = `${p.display_name} <span class="muted">@${p.username}</span>${isMe ? ' <span class="me-tag">👈 tú</span>' : ""}`;
+  const rowCls = `${!p.has_prediction ? "no-pred " : ""}${isMe ? "me-row" : ""}`.trim();
+  if (!p.has_prediction) {
+    return `<tr class="${rowCls}">${rankCell}<td class="l muted">${nameCell}</td>
+      <td class="muted pred-cell">–</td><td class="muted">–</td>${cumCell}<td>${editBtn}</td></tr>`;
+  }
+  const ph = p.pred_home ?? "–", pa = p.pred_away ?? "–";
+  const pts = scored ? "<b>" + p.points + "</b>" : "—";
+  return `<tr class="${rowCls}">${rankCell}<td class="l">${nameCell}</td>
+    <td class="pred-cell">${ph} : ${pa}</td><td>${pts}</td>${cumCell}<td>${editBtn}</td></tr>`;
+}
+
+function predictionsTable(preds, scored, predCount, partCount, isAdmin, showCumulative, meUsername, expanded) {
   if (!preds.length) return '<h2>Predicciones</h2><div class="empty">Sin predicciones cargadas.</div>';
   const counter = `<span class="badge" style="font-size:.8rem;margin-left:.5rem">${predCount}/${partCount}</span>`;
   const editCol = isAdmin ? '<th></th>' : '';
   const cumCol = showCumulative ? '<th>Acumulado</th>' : '';
-  const rows = preds.map(p => {
-    const editBtn = isAdmin
-      ? `<button class="btn-link editPredBtn" data-username="${p.username}" data-home="${p.pred_home ?? ""}" data-away="${p.pred_away ?? ""}">✎</button>`
-      : '';
-    const cumCell = showCumulative ? `<td>${p.cumulative ?? "–"}</td>` : '';
-    if (!p.has_prediction) {
-      return `<tr class="no-pred"><td class="l muted">${p.display_name} <span class="muted">@${p.username}</span></td>
-        <td class="muted pred-cell">–</td><td class="muted">–</td>${cumCell}<td>${editBtn}</td></tr>`;
+  const rankCol = scored ? '<th></th>' : '';
+  const colCount = 3 + (scored ? 1 : 0) + (showCumulative ? 1 : 0) + (isAdmin ? 1 : 0);
+  const row = (p, i) => predRowHtml(p, i, scored, isAdmin, showCumulative, meUsername);
+
+  const meIdx = meUsername ? preds.findIndex(p => p.username === meUsername) : -1;
+  let bodyRows, toggleBtn = "";
+  if (expanded || preds.length <= TOP_N) {
+    bodyRows = preds.map(row).join("");
+    if (preds.length > TOP_N) toggleBtn = `<button class="btn secondary toggle-preds" style="margin-top:.7rem">Ver solo el top ${TOP_N}</button>`;
+  } else {
+    bodyRows = preds.slice(0, TOP_N).map(row).join("");
+    if (meIdx >= TOP_N) {
+      bodyRows += `<tr class="divider-row"><td colspan="${colCount}">· · ·</td></tr>` + row(preds[meIdx], meIdx);
     }
-    const ph = p.pred_home ?? "–", pa = p.pred_away ?? "–";
-    const pts = scored ? "<b>" + p.points + "</b>" : "—";
-    return `<tr><td class="l">${p.display_name} <span class="muted">@${p.username}</span></td>
-      <td class="pred-cell">${ph} : ${pa}</td><td>${pts}</td>${cumCell}<td>${editBtn}</td></tr>`;
-  }).join("");
-  return `<h2>Predicciones${scored ? " y puntos" : ""}${counter}</h2>
-    <table><thead><tr><th class="l">Jugador</th><th>Pronóstico</th><th>Puntos</th>${cumCol}${editCol}</tr></thead>
-    <tbody>${rows}</tbody></table>`;
+    toggleBtn = `<button class="btn secondary toggle-preds" style="margin-top:.7rem">Ver tabla completa (${preds.length})</button>`;
+  }
+
+  return `<h2 style="margin-top:0">Predicciones${scored ? " y puntos" : ""}${counter}</h2>
+    <table><thead><tr>${rankCol}<th class="l">Jugador</th><th>Pronóstico</th><th>Puntos</th>${cumCol}${editCol}</tr></thead>
+    <tbody>${bodyRows}</tbody></table>
+    ${toggleBtn}`;
 }
 
 function adminScoreForm(m, isAdmin, manualEnabled) {
   if (!isAdmin || !manualEnabled) return "";
   const fin = m.status === "finished";
-  return `<div class="card" style="margin-top:1rem">
+  return `<div class="notice" style="margin-bottom:1rem">
     <p style="margin:0 0 .5rem;font-size:.82rem;color:var(--muted)">▲ Admin · Marcador manual</p>
     <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
       <input id="sh" type="number" min="0" value="${m.home_score ?? 0}"
@@ -73,55 +151,98 @@ function adminScoreForm(m, isAdmin, manualEnabled) {
   </div>`;
 }
 
-function filesSection(files) {
-  if (!files.length) return "";
-  return `<h2>Capturas del OCR (${files.length})</h2>` +
-    files.map(f => `<img class="shot" src="${f.url}" alt="${f.original_name || "captura"}" loading="lazy">`).join("");
+function shotPanel(files) {
+  if (!files.length) {
+    return `<div class="shot-label">Captura de Golpredictor</div>
+      <div class="shot-wrap"><span class="empty" style="padding:0">Sin captura disponible.</span></div>`;
+  }
+  // Only the latest screenshot is shown — earlier ones (e.g. a re-upload) aren't relevant once predictions are saved.
+  const file = files.reduce((a, b) => (b.id > a.id ? b : a), files[0]);
+  const alt = file.original_name || "captura";
+  return `<div class="shot-label">Captura de Golpredictor</div>
+    <div class="shot-frame zoomTrigger" data-url="${file.url}" data-alt="${alt}" title="Clic para ampliar">
+      <img src="${file.url}" alt="${alt}" loading="lazy">
+      <span class="zoom-hint">🔍</span>
+    </div>`;
+}
+
+function openLightbox(url, alt) {
+  const overlay = document.createElement("div");
+  overlay.className = "lightbox-overlay";
+  overlay.innerHTML = `<button class="lightbox-close" title="Cerrar (Esc)">✕</button>
+    <img class="lightbox-img fit" src="${url}" alt="${alt || ""}">`;
+  document.body.appendChild(overlay);
+  const img = overlay.querySelector(".lightbox-img");
+  img.onclick = (e) => { e.stopPropagation(); img.classList.toggle("fit"); };
+  function close() { overlay.remove(); document.removeEventListener("keydown", onKey); }
+  function onKey(e) { if (e.key === "Escape") close(); }
+  overlay.onclick = close;
+  overlay.querySelector(".lightbox-close").onclick = (e) => { e.stopPropagation(); close(); };
+  document.addEventListener("keydown", onKey);
 }
 
 (async () => {
   const main = document.getElementById("main");
   if (!id) { main.innerHTML = '<div class="empty">Falta el id del partido.</div>'; return; }
-  const res = await fetch("/matches/" + encodeURIComponent(id));
+  const [res, me] = await Promise.all([
+    fetch("/matches/" + encodeURIComponent(id)),
+    fetch("/me").then(r => r.json()).catch(() => ({})),
+  ]);
   if (!res.ok) { main.innerHTML = '<div class="empty">Partido no encontrado.</div>'; return; }
   const d = await res.json();
+  const meUsername = me.identified ? me.username : null;
   const scored = d.match.home_score != null && d.match.away_score != null;
-  main.innerHTML =
-    `<p><a href="/calendar">← Calendario</a></p>` +
-    header(d.match) +
-    adminScoreForm(d.match, d.is_admin, d.manual_score_enabled) +
-    predictionsTable(d.predictions, scored, d.prediction_count, d.participant_count, d.is_admin, d.match.status === "finished") +
-    filesSection(d.files);
+  let expanded = false;
 
-  document.getElementById("scoreBtn")?.addEventListener("click", async () => {
-    const btn = document.getElementById("scoreBtn");
-    const msg = document.getElementById("scoreMsg");
-    btn.disabled = true;
-    msg.textContent = "Guardando…";
-    try {
-      const r = await fetch(`/matches/${id}/score`, {
-        method: "POST", headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          home_score: parseInt(document.getElementById("sh").value),
-          away_score: parseInt(document.getElementById("sa").value),
-          finished: document.getElementById("sfin").checked,
-        }),
-      });
-      if (!r.ok) {
-        const e = await r.json();
-        throw new Error(e.detail || r.statusText);
-      }
-      msg.textContent = "✓ Guardado";
-      msg.style.color = "var(--green)";
-      setTimeout(() => location.reload(), 800);
-    } catch (e) {
-      msg.textContent = "Error: " + e.message;
-      msg.style.color = "#e2557b";
-      btn.disabled = false;
-    }
-  });
+  function renderBody() {
+    main.innerHTML =
+      `<p><a href="/calendar">← Calendario</a></p>` +
+      header(d.match) +
+      `<div class="match-body">
+         <div class="card match-col-left">
+           ${adminScoreForm(d.match, d.is_admin, d.manual_score_enabled)}
+           ${predictionsTable(d.predictions, scored, d.prediction_count, d.participant_count, d.is_admin, d.match.status === "finished", meUsername, expanded)}
+         </div>
+         <div class="card match-col-right">${shotPanel(d.files)}</div>
+       </div>`;
+  }
+  renderBody();
 
   main.addEventListener("click", async (ev) => {
+    const zoomTrigger = ev.target.closest(".zoomTrigger");
+    if (zoomTrigger) { openLightbox(zoomTrigger.dataset.url, zoomTrigger.dataset.alt); return; }
+
+    if (ev.target.closest(".toggle-preds")) { expanded = !expanded; renderBody(); return; }
+
+    if (ev.target.closest("#scoreBtn")) {
+      const btn = document.getElementById("scoreBtn");
+      const msg = document.getElementById("scoreMsg");
+      btn.disabled = true;
+      msg.textContent = "Guardando…";
+      try {
+        const r = await fetch(`/matches/${id}/score`, {
+          method: "POST", headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            home_score: parseInt(document.getElementById("sh").value),
+            away_score: parseInt(document.getElementById("sa").value),
+            finished: document.getElementById("sfin").checked,
+          }),
+        });
+        if (!r.ok) {
+          const e = await r.json();
+          throw new Error(e.detail || r.statusText);
+        }
+        msg.textContent = "✓ Guardado";
+        msg.style.color = "var(--green)";
+        setTimeout(() => location.reload(), 800);
+      } catch (e) {
+        msg.textContent = "Error: " + e.message;
+        msg.style.color = "#e2557b";
+        btn.disabled = false;
+      }
+      return;
+    }
+
     const editBtn = ev.target.closest(".editPredBtn");
     if (editBtn) {
       const tr = editBtn.closest("tr");
