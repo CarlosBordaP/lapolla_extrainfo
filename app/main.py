@@ -625,6 +625,39 @@ def set_score(
     return {"match_id": match.id, "status": match.status.value}
 
 
+@app.post("/matches/{match_id}/reset")
+def reset_match(
+    match_id: int, request: Request, session: Session = Depends(get_session)
+) -> dict:
+    """Admin: delete all predictions and uploaded files for a match, then unlock it
+    so a corrected screenshot can be re-uploaded via the normal OCR flow."""
+    if not _is_admin(request):
+        raise HTTPException(status_code=403, detail="admin only")
+    match = session.get(Match, match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="match not found")
+
+    preds = session.scalars(select(Prediction).where(Prediction.match_id == match_id)).all()
+    pred_count = len(preds)
+    for p in preds:
+        session.delete(p)
+
+    files = session.scalars(select(MatchFile).where(MatchFile.match_id == match_id)).all()
+    file_count = len(files)
+    for f in files:
+        try:
+            if os.path.exists(f.stored_path):
+                os.remove(f.stored_path)
+        except OSError:
+            log.warning("could not delete file %s", f.stored_path)
+        session.delete(f)
+
+    match.locked = False
+    match.force_upload = True
+    session.commit()
+    return {"match_id": match_id, "deleted_predictions": pred_count, "deleted_files": file_count}
+
+
 @app.post("/matches/{match_id}/link")
 def link_match(
     match_id: int, payload: ProviderLinkIn, session: Session = Depends(get_session)

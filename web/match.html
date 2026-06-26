@@ -151,10 +151,19 @@ function adminScoreForm(m, isAdmin, manualEnabled) {
   </div>`;
 }
 
-function shotPanel(files) {
+function shotPanel(files, isAdmin, matchId) {
+  const resetBtn = isAdmin
+    ? `<div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--line)">
+        <p style="margin:0 0 .5rem;font-size:.82rem;color:var(--muted)">▲ Admin · Reiniciar partido</p>
+        <p style="margin:0 0 .7rem;font-size:.8rem;color:var(--muted)">Elimina la imagen y todas las predicciones del partido y lo desbloquea para volver a subir la captura correcta.</p>
+        <button class="btn" id="resetMatchBtn" style="background:#7f1d1d;border-color:#991b1b">Eliminar y reiniciar</button>
+        <span id="resetMsg" style="font-size:.85rem;margin-left:.5rem"></span>
+      </div>`
+    : "";
   if (!files.length) {
     return `<div class="shot-label">Captura de Golpredictor</div>
-      <div class="shot-wrap"><span class="empty" style="padding:0">Sin captura disponible.</span></div>`;
+      <div class="shot-wrap"><span class="empty" style="padding:0">Sin captura disponible.</span></div>
+      ${resetBtn}`;
   }
   // Only the latest screenshot is shown — earlier ones (e.g. a re-upload) aren't relevant once predictions are saved.
   const file = files.reduce((a, b) => (b.id > a.id ? b : a), files[0]);
@@ -163,7 +172,8 @@ function shotPanel(files) {
     <div class="shot-frame zoomTrigger" data-url="${file.url}" data-alt="${alt}" title="Clic para ampliar">
       <img src="${file.url}" alt="${alt}" loading="lazy">
       <span class="zoom-hint">🔍</span>
-    </div>`;
+    </div>
+    ${resetBtn}`;
 }
 
 function openLightbox(url, alt) {
@@ -203,7 +213,7 @@ function openLightbox(url, alt) {
            ${adminScoreForm(d.match, d.is_admin, d.manual_score_enabled)}
            ${predictionsTable(d.predictions, scored, d.prediction_count, d.participant_count, d.is_admin, d.match.status === "finished", meUsername, expanded)}
          </div>
-         <div class="card match-col-right">${shotPanel(d.files)}</div>
+         <div class="card match-col-right">${shotPanel(d.files, d.is_admin, id)}</div>
        </div>`;
   }
   renderBody();
@@ -213,6 +223,27 @@ function openLightbox(url, alt) {
     if (zoomTrigger) { openLightbox(zoomTrigger.dataset.url, zoomTrigger.dataset.alt); return; }
 
     if (ev.target.closest(".toggle-preds")) { expanded = !expanded; renderBody(); return; }
+
+    if (ev.target.closest("#resetMatchBtn")) {
+      if (!confirm("¿Seguro que deseas eliminar todas las predicciones y la imagen de este partido? Esta acción no se puede deshacer.")) return;
+      const btn = document.getElementById("resetMatchBtn");
+      const msg = document.getElementById("resetMsg");
+      btn.disabled = true;
+      msg.textContent = "Eliminando…";
+      try {
+        const r = await fetch(`/matches/${id}/reset`, { method: "POST" });
+        if (!r.ok) {
+          const e = await r.json();
+          throw new Error(e.detail || r.statusText);
+        }
+        location.replace(`/upload?match=${id}`);
+      } catch (e) {
+        msg.textContent = "Error: " + e.message;
+        msg.style.color = "#e2557b";
+        btn.disabled = false;
+      }
+      return;
+    }
 
     if (ev.target.closest("#scoreBtn")) {
       const btn = document.getElementById("scoreBtn");
