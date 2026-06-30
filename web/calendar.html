@@ -281,7 +281,13 @@ function renderTab(kind, list, isAdmin) {
     document.getElementById("content").innerHTML = renderTab(current, list, isAdmin);
     document.querySelectorAll(".acc-head").forEach(h =>
       h.onclick = () => h.closest(".acc-item").classList.toggle("open"));
+    sessionStorage.setItem("calCtx", JSON.stringify({ tab: current, ids: list.map(m => m.id) }));
   }
+
+  // Restore last-viewed tab from sessionStorage (e.g. when coming back from a match)
+  const savedCtx = (() => { try { return JSON.parse(sessionStorage.getItem("calCtx")); } catch(_) { return null; } })();
+  if (savedCtx?.tab && defs.find(([k]) => k === savedCtx.tab)) current = savedCtx.tab;
+
   render();
 })();
 </script>

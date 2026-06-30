@@ -39,6 +39,15 @@
     .lightbox-close { position:fixed; top:1rem; right:1.2rem; background:var(--panel); border:1px solid var(--line);
       color:var(--text); border-radius:50%; width:2.4rem; height:2.4rem; font-size:1.1rem; cursor:pointer; z-index:2001; }
 
+    .match-topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem; }
+    .match-nav { display:flex; align-items:center; gap:.4rem; }
+    .nav-arrow { display:flex; align-items:center; justify-content:center; width:1.9rem; height:1.9rem;
+      border:1px solid var(--line); border-radius:8px; color:var(--muted); text-decoration:none;
+      font-size:1rem; background:var(--panel-elevated); transition:border-color .15s, color .15s; line-height:1; }
+    .nav-arrow:hover { border-color:var(--accent); color:var(--accent); text-decoration:none; }
+    .nav-arrow.disabled { opacity:.3; pointer-events:none; }
+    .nav-pos { font-size:.78rem; color:var(--muted); font-weight:600; min-width:2.5rem; text-align:center; }
+
     /* Predictions table: highlight "me", show top N + your row if you're
        outside it, with a toggle to expand — same pattern as /board. Only the
        row's outer edge is drawn (top/bottom shadow on every cell, left/right
@@ -67,6 +76,25 @@ const fmtDate = iso => new Date(iso).toLocaleString("es-CO", { timeZone:"America
 const params = new URLSearchParams(location.search);
 const id = params.get("id");
 const TOP_N = 10;
+
+function matchNavBar() {
+  try {
+    const ctx = JSON.parse(sessionStorage.getItem("calCtx"));
+    if (!ctx?.ids?.length) return '<p><a href="/calendar">← Calendario</a></p>';
+    const idx = ctx.ids.indexOf(parseInt(id, 10));
+    if (idx < 0) return '<p><a href="/calendar">← Calendario</a></p>';
+    const prev = idx > 0 ? ctx.ids[idx - 1] : null;
+    const next = idx < ctx.ids.length - 1 ? ctx.ids[idx + 1] : null;
+    const prevEl = prev ? `<a class="nav-arrow" href="/match?id=${prev}" title="Partido anterior">‹</a>` : `<span class="nav-arrow disabled">‹</span>`;
+    const nextEl = next ? `<a class="nav-arrow" href="/match?id=${next}" title="Partido siguiente">›</a>` : `<span class="nav-arrow disabled">›</span>`;
+    return `<div class="match-topbar">
+      <a href="/calendar">← Calendario</a>
+      <div class="match-nav">${prevEl}<span class="nav-pos">${idx + 1} / ${ctx.ids.length}</span>${nextEl}</div>
+    </div>`;
+  } catch(_) {
+    return '<p><a href="/calendar">← Calendario</a></p>';
+  }
+}
 
 function header(m) {
   const live = m.status === "live", finished = m.status === "finished";
@@ -206,7 +234,7 @@ function openLightbox(url, alt) {
 
   function renderBody() {
     main.innerHTML =
-      `<p><a href="/calendar">← Calendario</a></p>` +
+      matchNavBar() +
       header(d.match) +
       `<div class="match-body">
          <div class="card match-col-left">
