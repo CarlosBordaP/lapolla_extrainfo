@@ -395,6 +395,60 @@ def set_upload_window(
     return _match_brief(match)
 
 
+def _audit_accumulated(
+    match_id: int, ocr_predictions: list[dict], session: Session
+) -> dict:
+    """Compare the 'puntos acumulado' values read from the screenshot against our
+    computed standings (finished matches only, excluding the current one).
+    Returns mismatches so the admin can spot discrepancies before confirming."""
+    ocr_points: dict[str, int] = {
+        p["username"].strip(): p["accumulated"]
+        for p in ocr_predictions
+        if p.get("accumulated") is not None and p.get("username", "").strip()
+    }
+    if not ocr_points:
+        return {"available": False}
+
+    ours = {
+        r.username: r.total_points
+        for r in compute_standings(
+            session,
+            statuses={MatchStatus.FINISHED},
+            exclude_match_ids={match_id},
+        )
+    }
+    roster = {p.username: p.display_name for p in session.scalars(select(Participant)).all()}
+    keys_lower = {k.lower(): k for k in roster}
+
+    seen: set[str] = set()
+    mismatches: list[dict] = []
+    unknown: list[dict] = []
+    for ocr_user, ocr_pts in ocr_points.items():
+        ru = keys_lower.get(ocr_user.lower())
+        if ru is None:
+            close = difflib.get_close_matches(ocr_user.lower(), list(keys_lower), n=1, cutoff=0.8)
+            ru = keys_lower[close[0]] if close else None
+        if ru is None:
+            unknown.append({"ocr_username": ocr_user, "points": ocr_pts})
+            continue
+        seen.add(ru)
+        our_pts = ours.get(ru, 0)
+        if our_pts != ocr_pts:
+            mismatches.append({
+                "username": ru,
+                "display_name": roster[ru],
+                "ours": our_pts,
+                "golpredictor": ocr_pts,
+            })
+
+    return {
+        "available": True,
+        "compared": len(seen),
+        "mismatches": mismatches,
+        "unknown": unknown,
+    }
+
+
 @app.post("/matches/{match_id}/predictions/ingest")
 async def match_predictions_ingest(
     match_id: int,
@@ -447,12 +501,15 @@ async def match_predictions_ingest(
     )
     matched = match_and_validate(parsed.predictions, top, participants, _current_user(request))
 
+    audit = _audit_accumulated(match_id, parsed.predictions, session)
+
     return {
         "home_team": parsed.home_team,
         "away_team": parsed.away_team,
         "kickoff_text": parsed.kickoff_text,
         "raw_csv": parsed.raw,
         "upload_id": upload_id,
+        "audit": audit,
         **matched,  # predictions (resolved), top, validation
     }
 

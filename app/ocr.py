@@ -27,18 +27,21 @@ Estructura exacta:
 2) Si ARRIBA de la tabla, después de un título "Pronóstico:", aparece un marcador \
 (es el pronóstico del usuario que subió la imagen, que NO está en la tabla), \
 devuélvelo como segunda línea:  TOP,<local>,<visitante>  (si no se ve, omite esta línea)
-3) Línea de encabezado:  usuario,nombre,local,visitante
+3) Línea de encabezado:  usuario,nombre,local,visitante,acumulado
 4) Una línea por cada participante de la tabla:
    - usuario: la columna "Usuario"
    - nombre: la columna "Nombre" (si tiene comas, reemplázalas por espacios)
    - local: primer número del pronóstico (goles del equipo local); déjalo VACÍO si no se ve
    - visitante: segundo número del pronóstico (goles del equipo visitante); déjalo VACÍO si no se ve
+   - acumulado: número entero de la columna de puntos acumulados antes de este partido \
+(puede llamarse "Pts. Ac.", "Acumulado", "Pts Ac" o similar); déjalo VACÍO si la columna \
+no aparece o el valor está en blanco
 
 Reglas:
 - El pronóstico aparece como dos números separados por guion entre las banderas \
 (ej. "2 - 0" => local=2, visitante=0).
 - Si un participante NO puso pronóstico (el campo aparece en blanco o con "–"), \
-deja AMBOS campos vacíos: usuario,nombre,,
+deja AMBOS campos vacíos: usuario,nombre,,,<acumulado>
 - Si solo se ve uno de los dos números, pon el que se ve y deja el otro VACÍO.
 - El marcador del título superior (TOP) es de quien sube la imagen y NO se repite \
 en la tabla; extráelo aparte.
@@ -101,10 +104,11 @@ def _parse_score(s: str) -> int | None:
 
 def parse_csv(raw: str) -> ParsedScreenshot:
     """Parse the CSV the model returns into a ParsedScreenshot. Robust to commas
-    in names (the last two fields are always the scores)."""
+    in names. Supports 5-column format (with acumulado) and 4-column legacy format."""
     home = away = kickoff = ""
     top_home = top_away = None
     predictions: list[dict] = []
+    has_accumulated_col = False
     for line in _strip_fences(raw).splitlines():
         if not line.strip():
             continue
@@ -121,17 +125,29 @@ def parse_csv(raw: str) -> ParsedScreenshot:
             except (ValueError, IndexError):
                 pass
             continue
-        if head == "usuario":  # header row
+        if head == "usuario":  # header row — detect 5-column format
+            has_accumulated_col = len(parts) >= 5 and "acumulado" in [p.lower() for p in parts]
             continue
-        if len(parts) < 4:
-            continue
-        username = parts[0]
-        name = " ".join(parts[1:-2]).strip() or username
-        pred_home = _parse_score(parts[-2])
-        pred_away = _parse_score(parts[-1])
+        if has_accumulated_col:
+            if len(parts) < 5:
+                continue
+            username = parts[0]
+            name = " ".join(parts[1:-3]).strip() or username
+            pred_home = _parse_score(parts[-3])
+            pred_away = _parse_score(parts[-2])
+            accumulated = _parse_score(parts[-1])
+        else:
+            if len(parts) < 4:
+                continue
+            username = parts[0]
+            name = " ".join(parts[1:-2]).strip() or username
+            pred_home = _parse_score(parts[-2])
+            pred_away = _parse_score(parts[-1])
+            accumulated = None
         predictions.append({
             "username": username, "display_name": name,
             "pred_home": pred_home, "pred_away": pred_away,
+            "accumulated": accumulated,
         })
     return ParsedScreenshot(home, away, kickoff, predictions, top_home, top_away, raw=raw)
 

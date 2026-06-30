@@ -210,6 +210,26 @@ async function matchUpload(id) {
         const who = d.top.display_name ? `<b>${d.top.display_name}</b>` : "<b>(elige el usuario en la fila ★)</b>";
         vh += `<br>⭐ Pronóstico del top <b>${d.top.pred_home}-${d.top.pred_away}</b> → ${who}.`;
       }
+
+      // Audit: accumulated points comparison
+      const au = d.audit;
+      if (au?.available) {
+        if (au.mismatches.length === 0 && au.unknown.length === 0) {
+          vh += `<br><span style="color:var(--green)">✓ Puntos acumulados verificados (${au.compared} participantes): todos coinciden.</span>`;
+        } else {
+          vh += `<br><span style="color:#e2557b">⚠ Auditoría de puntos acumulados — discrepancias detectadas:</span>`;
+          if (au.mismatches.length) {
+            vh += `<ul style="margin:.3rem 0 .3rem 1.2rem;font-size:.82rem">` +
+              au.mismatches.map(m =>
+                `<li><b>${m.display_name}</b> (@${m.username}): imagen muestra <b>${m.golpredictor}</b> pts, nosotros tenemos <b>${m.ours}</b> pts.</li>`
+              ).join("") + `</ul>`;
+          }
+          if (au.unknown.length) {
+            vh += `<span style="font-size:.82rem;color:var(--muted)">No reconocidos: ${au.unknown.map(u => u.ocr_username).join(", ")}.</span>`;
+          }
+        }
+      }
+
       const vEl = document.getElementById("validation");
       vEl.innerHTML = vh; vEl.style.display = "block";
 

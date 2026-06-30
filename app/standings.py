@@ -38,17 +38,23 @@ def assign_ranks(points_desc: list[int]) -> list[int]:
 
 
 def compute_standings(
-    session: Session, statuses: set[MatchStatus] | None = None
+    session: Session,
+    statuses: set[MatchStatus] | None = None,
+    exclude_match_ids: set[int] | None = None,
 ) -> list[StandingRow]:
     """Return participants ranked by total points. By default counts every scored
     match (LIVE or FINISHED); pass `statuses={FINISHED}` for the pre-live baseline.
     Ties are broken by username for stability.
     """
     include = statuses or {MatchStatus.LIVE, MatchStatus.FINISHED}
+    exclude = exclude_match_ids or set()
     matches = {
         m.id: m
         for m in session.scalars(select(Match)).all()
-        if m.status in include and m.home_score is not None and m.away_score is not None
+        if m.status in include
+        and m.home_score is not None
+        and m.away_score is not None
+        and m.id not in exclude
     }
     if not matches:
         return []
