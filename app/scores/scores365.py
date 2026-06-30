@@ -16,6 +16,8 @@ the score.
 
 from __future__ import annotations
 
+import datetime as dt
+
 import httpx
 
 from app.scores.base import ProviderGame, register
@@ -50,6 +52,18 @@ def _non_negative_int(value) -> int | None:
     return int(value)
 
 
+def _parse_start_time(value: str | None) -> dt.datetime | None:
+    """Parse 365scores ISO-8601 startTime (e.g. '2026-06-27T18:30:00-05:00') to
+    naive UTC. Python 3.11+ handles the offset in fromisoformat()."""
+    if not value:
+        return None
+    try:
+        aware = dt.datetime.fromisoformat(value)
+        return aware.astimezone(dt.timezone.utc).replace(tzinfo=None)
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_games(raw: list[dict]) -> list[ProviderGame]:
     """Map 365scores' raw game dicts to ProviderGame. Pure — unit-tested directly."""
     games: list[ProviderGame] = []
@@ -69,6 +83,8 @@ def parse_games(raw: list[dict]) -> list[ProviderGame]:
                 minute=_non_negative_int(g.get("gameTime")),
                 started=started,
                 finished=finished,
+                kickoff_utc=_parse_start_time(g.get("startTime")),
+                stage_num=g.get("stageNum"),
             )
         )
     return games

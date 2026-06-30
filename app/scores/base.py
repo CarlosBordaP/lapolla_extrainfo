@@ -9,8 +9,9 @@ both update scores AND auto-link our matches to provider IDs by team name.
 
 from __future__ import annotations
 
+import datetime as dt
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 
 from app.teams import TEAM_ALIASES
@@ -26,6 +27,8 @@ class ProviderGame:
     minute: int | None  # in-game minute, if reported
     started: bool
     finished: bool
+    kickoff_utc: dt.datetime | None = field(default=None)
+    stage_num: int | None = field(default=None)  # 1=group, 2+=knockout
 
 
 class ScoreProvider(Protocol):

@@ -47,8 +47,8 @@ from app.schemas import (
     VisitPingIn,
     VisitStartIn,
 )
-from app.scores.base import get_provider
-from app.scoring import score_prediction
+from app.scores.base import get_provider, normalize_team
+from app.scoring import Stage, score_prediction
 from app.standings import assign_ranks, compute_live_board, compute_standings
 from app.storage import save_prediction_files, save_upload_file
 from app.tracking import compute_engagement, ping_visit, start_visit
@@ -693,6 +693,65 @@ def provider_games() -> list[dict]:
         }
         for g in games
     ]
+
+
+@app.post("/matches/sync")
+def sync_fixtures(request: Request, session: Session = Depends(get_session)) -> dict:
+    """Admin: pull the current fixture list from the score provider and create any
+    matches not yet in the DB. Also auto-links existing matches to their provider ID.
+
+    Safe to re-run: existing matches (matched by provider ID or normalized team pair)
+    are never duplicated — only their provider_match_id is updated if missing."""
+    if not _is_admin(request):
+        raise HTTPException(status_code=403, detail="admin only")
+    settings = get_settings()
+    try:
+        provider = get_provider(settings.score_provider)
+        games = provider.fetch_games()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"provider error: {e}")
+
+    all_matches = session.scalars(select(Match)).all()
+    by_provider_id: dict[str, Match] = {m.provider_match_id: m for m in all_matches if m.provider_match_id}
+    by_teams: dict[tuple[str, str], Match] = {
+        (normalize_team(m.home_team), normalize_team(m.away_team)): m
+        for m in all_matches
+    }
+
+    created = linked = skipped = 0
+    for game in games:
+        if not game.kickoff_utc:
+            continue
+
+        match = by_provider_id.get(game.provider_match_id)
+        if match is None:
+            key = (normalize_team(game.home_team), normalize_team(game.away_team))
+            match = by_teams.get(key)
+
+        if match is not None:
+            if not match.provider_match_id:
+                match.provider_match_id = game.provider_match_id
+                linked += 1
+            else:
+                skipped += 1
+            continue
+
+        stage = Stage.KNOCKOUT if (game.stage_num or 1) > 1 else Stage.GROUP
+        new_match = Match(
+            home_team=game.home_team,
+            away_team=game.away_team,
+            kickoff_utc=game.kickoff_utc,
+            stage=stage,
+            status=MatchStatus.SCHEDULED,
+            provider_match_id=game.provider_match_id,
+        )
+        session.add(new_match)
+        by_provider_id[game.provider_match_id] = new_match
+        by_teams[(normalize_team(game.home_team), normalize_team(game.away_team))] = new_match
+        created += 1
+
+    session.commit()
+    return {"created": created, "linked": linked, "skipped": skipped, "total_from_provider": len(games)}
 
 
 @app.post("/scores/refresh")

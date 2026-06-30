@@ -53,6 +53,10 @@
   <main>
     <h1>Calendario</h1>
     <div class="tabs" id="tabs"></div>
+    <div id="syncBar" style="display:none;margin-bottom:1rem">
+      <button class="btn secondary" id="syncBtn" style="font-size:.82rem">⟳ Sincronizar fixtures desde API</button>
+      <span id="syncMsg" style="font-size:.82rem;margin-left:.6rem;color:var(--muted)"></span>
+    </div>
     <div id="content"><div class="empty">Cargando…</div></div>
   </main>
 
@@ -226,6 +230,30 @@ function renderTab(kind, list, isAdmin) {
     fetch("/me").then(r => r.json()),
   ]);
   const isAdmin = me.is_admin;
+
+  if (isAdmin) {
+    document.getElementById("syncBar").style.display = "block";
+    document.getElementById("syncBtn").onclick = async () => {
+      const btn = document.getElementById("syncBtn");
+      const msg = document.getElementById("syncMsg");
+      btn.disabled = true;
+      msg.textContent = "Consultando API…";
+      msg.style.color = "var(--muted)";
+      try {
+        const r = await fetch("/matches/sync", { method: "POST" });
+        if (!r.ok) { const e = await r.json(); throw new Error(e.detail || r.statusText); }
+        const d = await r.json();
+        msg.textContent = `✓ Creados: ${d.created} · Vinculados: ${d.linked} · Ya existían: ${d.skipped} (de ${d.total_from_provider} en API)`;
+        msg.style.color = "var(--green)";
+        if (d.created > 0) setTimeout(() => location.reload(), 1200);
+      } catch (e) {
+        msg.textContent = "Error: " + e.message;
+        msg.style.color = "#e2557b";
+      }
+      btn.disabled = false;
+    };
+  }
+
   const groups = {
     live: matches.filter(m => m.status === "live"),
     upcoming: matches.filter(m => m.status === "scheduled"),
